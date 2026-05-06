@@ -33,3 +33,37 @@ export async function getActionById(id: string): Promise<AgentAction | null> {
   `) as AgentAction[];
   return rows[0] ?? null;
 }
+
+export async function findActionByAgentAndTimestamp(
+  agent_id: string,
+  timestamp: string,
+): Promise<{ id: string } | null> {
+  const rows = (await sql`
+    select id from agent_actions
+    where agent_id = ${agent_id} and timestamp = ${timestamp}
+    limit 1
+  `) as { id: string }[];
+  return rows[0] ?? null;
+}
+
+export type AgentActionInput = {
+  agent_id: string;
+  timestamp: string;
+  input: string;
+  context: string | null;
+  output: string;
+  tool_calls: string[];
+  autonomy_level: number;
+};
+
+export async function insertAgentAction(action: AgentActionInput): Promise<{ id: string }> {
+  const rows = (await sql`
+    insert into agent_actions
+      (agent_id, timestamp, input, context, output, tool_calls, autonomy_level)
+    values
+      (${action.agent_id}, ${action.timestamp}, ${action.input}, ${action.context},
+       ${action.output}, ${JSON.stringify(action.tool_calls)}::jsonb, ${action.autonomy_level})
+    returning id
+  `) as { id: string }[];
+  return rows[0];
+}
