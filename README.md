@@ -48,7 +48,7 @@ The four routes:
 
 ALOHAS is moving toward AI as operational infrastructure: agents that participate directly in financial, retail, logistics, and decision-making flows. The hardest failure mode in that world is not technical breakage. It is **operational drift** — agents that produce locally reasonable decisions which, taken together, no longer match what the system is supposed to do. The API responds. Workflows complete. Nothing alerts. Coherence erodes silently.
 
-That problem is what motivated the memo accompanying this build, and it is what this tool starts to address. Not by being a complete solution — eight hours of work cannot be that — but by demonstrating that the smallest meaningful intervention is a weekly process, not a platform.
+That problem is what motivated the memo accompanying this build, and it is what this tool starts to address. Not by being a complete solution — a single demo cannot be that — but by demonstrating that the smallest meaningful intervention is a weekly process, not a platform.
 
 ---
 
@@ -104,7 +104,7 @@ The first condition is conventional. The other two are deliberate.
 
 In the full 80-action run, the cascade fired on **2 cases (2.5% rate)**, adding **$0.027** to the total cost. Both were policy-flagged correct verdicts. Sonnet agreed with Haiku in both cases — including the case 4 miss above, which is what made *cross-model* the right framing.
 
-**Why Haiku 4.5 as primary.** It is the cheapest production-quality model in the Anthropic stack with structured-output reliability, and the cascade exists precisely to handle the cases where Haiku is not enough. Going Sonnet-only would have raised cost ~6× for marginal accuracy gain on the easy 90% of cases. Going Opus-only would have made the demo unbuildable in 8 hours within reasonable cost.
+**Why Haiku 4.5 as primary.** It is the cheapest production-quality model in the Anthropic stack with structured-output reliability, and the cascade exists precisely to handle the cases where Haiku is not enough. Going Sonnet-only would have raised cost ~6× for marginal accuracy gain on the easy 90% of cases. Going Opus-only would have pushed cost beyond what a demo of this scope can justify.
 
 **Why not OpenAI, Gemini, or a smaller open model.** The case is built for ALOHAS, which standardized on Claude. The right architectural decision was to use the stack the user already chose, not the one I might have preferred. Multi-model abstractions ("model router") are a premature optimization at this stage of the product.
 
@@ -210,6 +210,6 @@ migrations/
 
 ---
 
-Built in 8 hours with Claude Code. The interesting work was not what I told the assistant to do, it was where I stopped it, what I asked twice, and the failures I chose to document instead of hide.
+Built with Claude Code. The interesting work was not what I told the assistant to do, it was where I stopped it, what I asked twice, and the failures I chose to document instead of hide.
 
 Pedro Cabrera Fernández

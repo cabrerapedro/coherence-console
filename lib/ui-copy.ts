@@ -5,7 +5,7 @@
 export const SITE = {
   name: "Coherence Console",
   tagline: "Detect when AI agents drift in production.",
-  footer: "Built in 8 hours with Claude Code.",
+  footer: "Built with Claude Code.",
 };
 
 export const PAGES = {
