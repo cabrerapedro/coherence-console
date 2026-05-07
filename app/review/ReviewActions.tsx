@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, HelpCircle, ThumbsUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +19,7 @@ type Props = {
   total_count: number;
   classifier_verdict: Label;
   existing_label: Label | null;
+  source: "demo" | "upload";
 };
 
 const BUTTONS: {
@@ -40,6 +40,31 @@ export default function ReviewActions(props: Props) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const sourceQuery = props.source === "upload" ? "&source=upload" : "";
+
+  // Reset transient UI state whenever the user moves to a different action
+  // (button click, keyboard nav, direct URL change). Without this, the
+  // `submitting` flag from the previous click stays "stuck" because Next.js
+  // soft-navigates and reuses this client component instance — every key
+  // press after the first would early-return on the `submitting` guard.
+  useEffect(() => {
+    setSubmitting(null);
+    setError(null);
+  }, [props.action_id]);
+
+  // Warm up adjacent pages so arrow nav and post-submit transitions feel
+  // closer to instant. The /review route reads cookies so the dynamic data
+  // can't be statically cached, but the prefetch payload still saves a
+  // round trip on the next click.
+  useEffect(() => {
+    if (props.current_index > 0) {
+      router.prefetch(`/review?index=${props.current_index - 1}${sourceQuery}`);
+    }
+    if (props.current_index + 1 < props.total_count) {
+      router.prefetch(`/review?index=${props.current_index + 1}${sourceQuery}`);
+    }
+  }, [props.current_index, props.total_count, sourceQuery, router]);
+
   async function submit(value: Label | "confirm") {
     if (submitting) return;
     setError(null);
@@ -57,8 +82,9 @@ export default function ReviewActions(props: Props) {
         return;
       }
       const next = Math.min(props.current_index + 1, props.total_count - 1);
-      router.push(`/review?index=${next}`);
-      router.refresh();
+      router.push(`/review?index=${next}${sourceQuery}`);
+      // No router.refresh() — router.push already triggers an RSC fetch for
+      // the new route, and the action_id change effect above clears state.
     } catch (err) {
       setError(err instanceof Error ? err.message : "request failed");
       setSubmitting(null);
@@ -68,7 +94,7 @@ export default function ReviewActions(props: Props) {
   function navigate(delta: -1 | 1) {
     const next = props.current_index + delta;
     if (next < 0 || next >= props.total_count) return;
-    router.push(`/review?index=${next}`);
+    router.push(`/review?index=${next}${sourceQuery}`);
   }
 
   useEffect(() => {
@@ -91,7 +117,7 @@ export default function ReviewActions(props: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.current_index, props.action_id, submitting]);
+  }, [props.current_index, props.action_id, props.source, submitting]);
 
   return (
     <div className="space-y-3">

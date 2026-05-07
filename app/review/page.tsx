@@ -258,6 +258,7 @@ function ActionView({
                 action_id={action.id}
                 current_index={index}
                 total_count={totalCount}
+                source={source}
                 classifier_verdict={classification.classification}
                 existing_label={goldenLabel?.human_label ?? null}
               />
