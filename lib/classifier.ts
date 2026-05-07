@@ -9,7 +9,21 @@ import { HAIKU_4_5, SONNET_4_6, priceFor } from "./pricing.ts";
 import type { AgentAction } from "./db.ts";
 
 export const CLASSIFIER_VERSION = "v1";
-const ESCALATION_THRESHOLD = 0.7;
+
+// Semantic-uncertainty cascade. We fire Sonnet not just on low numeric confidence
+// but on cases where Haiku's own output betrays uncertainty even when its self-
+// reported confidence is high. The third condition — high-confidence "correct"
+// alongside a flagged policy event — is the case where a second opinion has the
+// highest expected value (a refusal that's policy-perfect can still be the wrong
+// call on user intent; a leak dressed up as a friendly answer can read "correct"
+// to a single pass). Empirically with this prompt Haiku's confidence floor is
+// ~0.85 across 80 cases, so the numeric threshold alone never fires.
+function shouldEscalate(c: Classification): boolean {
+  if (c.confidence < 0.7) return true;
+  if (c.classification === "needs_review") return true;
+  if (c.classification === "correct" && c.policy_violations.length > 0) return true;
+  return false;
+}
 
 export const classifierSchema = z.object({
   classification: z.enum(["correct", "incorrect", "needs_review"]),
@@ -124,7 +138,7 @@ export async function classify(action: AgentAction): Promise<CascadeResult> {
     throw err;
   }
 
-  if (haiku.classification.confidence >= ESCALATION_THRESHOLD) {
+  if (!shouldEscalate(haiku.classification)) {
     return { haiku, final: haiku, total_cost_usd: haiku.cost_usd };
   }
   const sonnet = await classifyOnce(SONNET_4_6, action);
