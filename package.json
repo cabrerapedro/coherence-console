@@ -2,11 +2,13 @@
   "name": "coherence-console",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "migrate": "node --env-file=.env.local scripts/migrate.ts",
     "seed:one": "node --env-file=.env.local scripts/seed_one.ts",
     "typecheck": "tsc --noEmit"
   },
