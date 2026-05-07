@@ -2,6 +2,16 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,27 +38,36 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto max-w-sm px-6 py-24">
-      <h1 className="text-lg font-semibold tracking-tight">Coherence Console — demo access</h1>
-      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-3">
-        <input
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="password"
-          className="rounded border border-current/30 bg-transparent px-3 py-2 text-sm"
-          aria-label="password"
-        />
-        <button
-          type="submit"
-          disabled={submitting || password.length === 0}
-          className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
-        >
-          {submitting ? "…" : "Enter"}
-        </button>
-        {error && <p className="text-sm text-red-500">{error}</p>}
-      </form>
+    <main className="grid min-h-screen place-items-center px-6 py-12">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-2 inline-flex size-9 items-center justify-center rounded-full border border-border bg-secondary">
+            <Activity className="size-4" />
+          </div>
+          <CardTitle className="text-base">Coherence Console</CardTitle>
+          <CardDescription>Demo access — password supplied separately.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            <Input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="password"
+              aria-label="password"
+            />
+            <Button type="submit" disabled={submitting || password.length === 0}>
+              {submitting ? "…" : "Enter"}
+            </Button>
+            {error && (
+              <p className="text-center text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
+        </CardContent>
+      </Card>
     </main>
   );
 }

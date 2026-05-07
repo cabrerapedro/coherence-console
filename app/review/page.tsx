@@ -1,4 +1,16 @@
 import Link from "next/link";
+import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
+import { Nav } from "@/components/Nav";
+import { HelpTip } from "@/components/HelpTip";
+import { ClassificationBadge } from "@/components/ClassificationBadge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
   getDatasetActionAtIndex,
   getDatasetActionCount,
@@ -9,6 +21,7 @@ import {
   type ClassificationRow,
   type GoldenLabel,
 } from "@/lib/db";
+import { PAGES, TOOLTIPS } from "@/lib/ui-copy";
 import ReviewActions from "./ReviewActions";
 
 const HAIKU_MODEL = "anthropic/claude-haiku-4-5";
@@ -27,54 +40,95 @@ export default async function ReviewPage({
     getReviewedCount(),
   ]);
 
-  return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="flex items-center justify-between text-xs">
-        <Link href="/" className="opacity-60 hover:opacity-100">← home</Link>
-        <span className="opacity-70">
-          {reviewedCount} / {totalCount} reviewed
-        </span>
-        <nav className="flex gap-3">
-          <PrevNext label="prev" href={index > 0 ? `/review?index=${index - 1}` : null} />
-          <PrevNext
-            label="next"
-            href={index + 1 < totalCount ? `/review?index=${index + 1}` : null}
-          />
-        </nav>
-      </header>
+  const reviewedPct = totalCount > 0 ? Math.round((reviewedCount / totalCount) * 100) : 0;
 
-      {!action ? (
-        <EmptyState index={index} totalCount={totalCount} />
-      ) : (
-        <ActionView
-          action={action}
-          index={index}
-          totalCount={totalCount}
-          classification={await getFinalClassification(action.id)}
-          goldenLabel={await getGoldenLabel(action.id)}
-        />
-      )}
-    </main>
+  return (
+    <>
+      <Nav />
+      <main className="mx-auto max-w-3xl px-6 py-8">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">{PAGES.review.title}</h1>
+          <p className="text-sm text-muted-foreground">{PAGES.review.subtitle}</p>
+        </header>
+
+        <section className="mt-6 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-baseline justify-between gap-4">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold tabular-nums">{reviewedCount}</span>
+              <span className="text-muted-foreground">of {totalCount} reviewed</span>
+              <HelpTip>{TOOLTIPS.reviewProgress}</HelpTip>
+            </div>
+            <div className="text-xs text-muted-foreground tabular-nums">{reviewedPct}%</div>
+          </div>
+          <Progress value={reviewedPct} className="mt-2" />
+          <div className="mt-3 flex items-center justify-between gap-4 text-xs">
+            <PrevNext direction="prev" index={index} totalCount={totalCount} />
+            <span className="font-mono text-muted-foreground">
+              action {index + 1} / {totalCount}
+            </span>
+            <PrevNext direction="next" index={index} totalCount={totalCount} />
+          </div>
+        </section>
+
+        {!action ? (
+          <EmptyState index={index} totalCount={totalCount} />
+        ) : (
+          <ActionView
+            action={action}
+            index={index}
+            totalCount={totalCount}
+            classification={await getFinalClassification(action.id)}
+            goldenLabel={await getGoldenLabel(action.id)}
+          />
+        )}
+      </main>
+    </>
   );
 }
 
-function PrevNext({ label, href }: { label: string; href: string | null }) {
-  if (!href) return <span className="opacity-30">{label}</span>;
+function PrevNext({
+  direction,
+  index,
+  totalCount,
+}: {
+  direction: "prev" | "next";
+  index: number;
+  totalCount: number;
+}) {
+  const target = direction === "prev" ? index - 1 : index + 1;
+  const enabled = direction === "prev" ? index > 0 : index + 1 < totalCount;
+  const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
+  const label = direction === "prev" ? "prev" : "next";
+  if (!enabled) {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground/40">
+        <Icon className="size-3.5" />
+        <span>{label}</span>
+      </span>
+    );
+  }
   return (
-    <Link href={href} className="opacity-60 hover:opacity-100">
-      {label}
+    <Link
+      href={`/review?index=${target}`}
+      className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+    >
+      {direction === "prev" && <Icon className="size-3.5" />}
+      <span>{label}</span>
+      {direction === "next" && <Icon className="size-3.5" />}
     </Link>
   );
 }
 
 function EmptyState({ index, totalCount }: { index: number; totalCount: number }) {
   return (
-    <section className="mt-10 rounded border border-dashed border-current/20 p-6 text-sm opacity-80">
-      No action at index {index}.{" "}
-      {totalCount === 0
-        ? <>Run <code className="font-mono">npm run seed:eighty</code>.</>
-        : <>The dataset has {totalCount} action(s); valid indices are 0&ndash;{totalCount - 1}.</>}
-    </section>
+    <Card className="mt-6">
+      <CardContent className="px-6 py-8 text-sm text-muted-foreground">
+        No action at index {index}.{" "}
+        {totalCount === 0
+          ? <>Run <code className="font-mono">npm run seed:eighty</code>.</>
+          : <>The dataset has {totalCount} action(s); valid indices are 0&ndash;{totalCount - 1}.</>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -92,134 +146,201 @@ function ActionView({
   goldenLabel: GoldenLabel | null;
 }) {
   return (
-    <>
-      <section className="mt-6">
-        <ActionCard action={action} index={index} />
-      </section>
-      <section className="mt-6">
-        {classification ? (
+    <div className="mt-6 space-y-6">
+      <ActionCard action={action} />
+      {classification ? (
+        <>
           <ClassificationCard c={classification} />
-        ) : (
-          <p className="text-sm opacity-60">Not yet classified.</p>
-        )}
-      </section>
-      {classification && (
-        <ReviewActions
-          action_id={action.id}
-          current_index={index}
-          total_count={totalCount}
-          classifier_verdict={classification.classification}
-          existing_label={goldenLabel?.human_label ?? null}
-        />
+          <Card>
+            <CardHeader className="pb-3">
+              <h3 className="text-sm font-semibold">Your verdict</h3>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ReviewActions
+                action_id={action.id}
+                current_index={index}
+                total_count={totalCount}
+                classifier_verdict={classification.classification}
+                existing_label={goldenLabel?.human_label ?? null}
+              />
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="px-6 py-8 text-sm text-muted-foreground">
+            Not yet classified. Run <code className="font-mono">npm run classify:all</code>.
+          </CardContent>
+        </Card>
       )}
-    </>
-  );
-}
-
-function ActionCard({ action, index }: { action: AgentAction; index: number }) {
-  return (
-    <article className="rounded border border-current/15 p-5 text-sm">
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs opacity-70">
-        <span className="font-mono">
-          #{index} · {action.agent_id}
-        </span>
-        <div className="flex gap-2">
-          <Badge>L{action.autonomy_level}</Badge>
-          <span className="font-mono opacity-80">{formatTimestamp(action.timestamp)}</span>
-        </div>
-      </header>
-      <Field label="Input" value={action.input} />
-      <Field label="Context" value={action.context ?? "—"} />
-      <Field label="Output" value={action.output} />
-      <Field
-        label="Tool calls"
-        value={action.tool_calls.length > 0 ? action.tool_calls.join(", ") : "none"}
-      />
-    </article>
-  );
-}
-
-function ClassificationCard({ c }: { c: ClassificationRow }) {
-  return (
-    <article className="rounded border border-current/15 p-5 text-sm">
-      <header className="mb-3 flex flex-wrap items-center gap-3 text-xs">
-        <ClassBadge value={c.classification} />
-        <span className="opacity-70">confidence {Number(c.confidence).toFixed(2)}</span>
-        <span className="opacity-70 font-mono">{prettyModel(c.model_used)}</span>
-        <span className="opacity-70 tabular-nums">${Number(c.cost_usd).toFixed(6)}</span>
-      </header>
-      <details className="mt-3 cursor-pointer">
-        <summary className="text-xs uppercase tracking-wide opacity-50">
-          Show reasoning ({c.reasoning_steps.length} step{c.reasoning_steps.length === 1 ? "" : "s"})
-        </summary>
-        <ol className="mt-2 list-decimal space-y-1 pl-5">
-          {c.reasoning_steps.map((s, i) => (
-            <li key={i}>{s}</li>
-          ))}
-        </ol>
-      </details>
-      <Field
-        label="Policy violations"
-        value={
-          c.policy_violations.length > 0 ? (
-            <span className="flex flex-wrap gap-1">
-              {c.policy_violations.map((p) => (
-                <Chip key={p}>{p}</Chip>
-              ))}
-            </span>
-          ) : (
-            "—"
-          )
-        }
-      />
-      <Field label="Autonomy appropriate" value={c.autonomy_appropriate ? "✓" : "✗"} />
-      <Field label="Escalation recommended" value={c.escalation_recommended ? "✓" : "✗"} />
-    </article>
-  );
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="mt-3 first:mt-0">
-      <div className="text-xs uppercase tracking-wide opacity-50">{label}</div>
-      <div className="mt-0.5">{value}</div>
     </div>
   );
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
+function ActionCard({ action }: { action: AgentAction }) {
   return (
-    <span className="rounded border border-current/30 px-2 py-0.5 font-mono text-xs">
-      {children}
-    </span>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="font-mono text-[10px]">
+            {action.agent_id}
+          </Badge>
+          <Badge variant="outline" className="font-mono text-[10px]">
+            autonomy L{action.autonomy_level}
+          </Badge>
+        </div>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {formatTimestamp(action.timestamp)}
+        </span>
+      </CardHeader>
+      <Separator />
+      <CardContent className="space-y-4 pt-4 text-sm">
+        <Field label="User input" value={action.input} mono />
+        <Field label="Context the agent had" value={action.context ?? "—"} mono />
+        <Field label="Agent output" value={action.output} mono />
+        <Field
+          label="Tool calls"
+          value={
+            action.tool_calls.length > 0 ? (
+              <span className="flex flex-wrap gap-1">
+                {action.tool_calls.map((t) => (
+                  <Badge key={t} variant="outline" className="font-mono text-[10px]">
+                    {t}
+                  </Badge>
+                ))}
+              </span>
+            ) : (
+              "none"
+            )
+          }
+        />
+      </CardContent>
+    </Card>
   );
 }
 
-function ClassBadge({ value }: { value: string }) {
-  const map: Record<string, string> = {
-    correct: "border-green-600/50 text-green-700 dark:text-green-400",
-    incorrect: "border-red-600/50 text-red-700 dark:text-red-400",
-    needs_review: "border-amber-600/50 text-amber-700 dark:text-amber-400",
-  };
-  const cls = map[value] ?? "border-current/30";
+function ClassificationCard({ c }: { c: ClassificationRow }) {
+  const isSonnet = c.model_used === SONNET_MODEL;
   return (
-    <span className={`rounded border px-2 py-0.5 font-mono text-xs uppercase tracking-wide ${cls}`}>
-      {value}
-    </span>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Classifier verdict
+          </span>
+          <ClassificationBadge value={c.classification} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline" className="gap-1 font-mono text-[10px]">
+            {prettyModel(c.model_used)}
+            {isSonnet && (
+              <span className="ml-1 inline-flex items-center gap-0.5 text-[9px] uppercase">
+                <ArrowUpRight className="size-2.5" />
+                escalated
+              </span>
+            )}
+          </Badge>
+          <span className="tabular-nums">
+            confidence <span className="font-medium text-foreground">{Number(c.confidence).toFixed(2)}</span>
+          </span>
+          <span className="tabular-nums">${Number(c.cost_usd).toFixed(6)}</span>
+        </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="space-y-4 pt-4 text-sm">
+        <details className="group rounded-md">
+          <summary className="flex cursor-pointer items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground">
+            <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+            <span>
+              Reasoning ({c.reasoning_steps.length} step
+              {c.reasoning_steps.length === 1 ? "" : "s"})
+            </span>
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-7">
+            {c.reasoning_steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </details>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <FlagCell label="Policy violations" tooltip={TOOLTIPS.policyViolations}>
+            {c.policy_violations.length > 0 ? (
+              <span className="flex flex-wrap gap-1">
+                {c.policy_violations.map((p) => (
+                  <Badge
+                    key={p}
+                    className="border-amber-500/40 bg-amber-500/10 font-mono text-[10px] text-amber-700 dark:text-amber-400"
+                  >
+                    {p}
+                  </Badge>
+                ))}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">none</span>
+            )}
+          </FlagCell>
+          <FlagCell label="Autonomy appropriate" tooltip={TOOLTIPS.autonomyAppropriate}>
+            <BoolGlyph value={c.autonomy_appropriate} />
+          </FlagCell>
+          <FlagCell label="Escalation recommended" tooltip={TOOLTIPS.escalationRecommended}>
+            <BoolGlyph value={c.escalation_recommended} />
+          </FlagCell>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function Field({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
   return (
-    <span className="rounded border border-current/30 px-2 py-0.5 font-mono text-xs">
-      {children}
+    <div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className={`mt-1 text-sm ${mono ? "font-mono leading-relaxed" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function FlagCell({
+  label,
+  tooltip,
+  children,
+}: {
+  label: string;
+  tooltip: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-secondary/30 p-3">
+      <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+        <HelpTip>{tooltip}</HelpTip>
+      </div>
+      <div className="mt-1.5 text-sm">{children}</div>
+    </div>
+  );
+}
+
+function BoolGlyph({ value }: { value: boolean }) {
+  return (
+    <span className={value ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+      {value ? "yes" : "no"}
     </span>
   );
 }
 
 function prettyModel(m: string): string {
   if (m === HAIKU_MODEL) return "Haiku 4.5";
-  if (m === SONNET_MODEL) return "Sonnet 4.6 (escalated)";
+  if (m === SONNET_MODEL) return "Sonnet 4.6";
   return m;
 }
 

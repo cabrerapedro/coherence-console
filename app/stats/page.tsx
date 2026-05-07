@@ -1,5 +1,21 @@
-import Link from "next/link";
+import { Database, DollarSign, Split, PiggyBank, type LucideIcon } from "lucide-react";
+import { Nav } from "@/components/Nav";
+import { HelpTip } from "@/components/HelpTip";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getDatasetStats, type DatasetStats } from "@/lib/db";
+import { PAGES, TOOLTIPS } from "@/lib/ui-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -12,81 +28,133 @@ const SONNET_AVG_FALLBACK_USD = 0.012;
 
 export default async function StatsPage() {
   const stats = await getDatasetStats();
-  const escalationRate = stats.finalClassifications > 0
-    ? stats.escalationCount / stats.finalClassifications
-    : 0;
+  const escalationRate =
+    stats.finalClassifications > 0 ? stats.escalationCount / stats.finalClassifications : 0;
   const sonnetRow = stats.byModel.find((m) => m.model === SONNET_MODEL);
   const sonnetAvg = sonnetRow && sonnetRow.calls > 0 ? sonnetRow.avgCost : SONNET_AVG_FALLBACK_USD;
   const sonnetOnlyBaseline = sonnetAvg * stats.totalActions;
   const saved = sonnetOnlyBaseline - stats.totalCostUsd;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Coherence Console — Stats</h1>
-        <Link href="/" className="text-xs opacity-60 hover:opacity-100">← home</Link>
-      </header>
-      <p className="mt-1 text-sm opacity-70">
-        Aggregates over the hand-designed dataset (<code className="font-mono">agent_id LIKE &apos;aloha-%&apos;</code>).
-      </p>
+    <>
+      <Nav />
+      <main className="mx-auto max-w-5xl px-6 py-8">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">{PAGES.stats.title}</h1>
+          <p className="text-sm text-muted-foreground">{PAGES.stats.subtitle}</p>
+        </header>
 
-      <section className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <Stat value={stats.totalActions.toString()} caption="actions in dataset" />
-        <Stat value={`$${stats.totalCostUsd.toFixed(4)}`} caption="spent classifying the dataset" />
-        <Stat value={`${(escalationRate * 100).toFixed(1)}%`} caption="of cases escalated from Haiku to Sonnet" />
-        <Stat value={`$${saved.toFixed(2)}`} caption="saved by routing through Haiku first" />
-      </section>
+        <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={Database}
+            value={stats.totalActions.toString()}
+            label="actions in dataset"
+            tip={TOOLTIPS.totalActions}
+          />
+          <StatCard
+            icon={DollarSign}
+            value={`$${stats.totalCostUsd.toFixed(4)}`}
+            label="spent classifying"
+            tip={TOOLTIPS.totalCost}
+          />
+          <StatCard
+            icon={Split}
+            value={`${(escalationRate * 100).toFixed(1)}%`}
+            label="escalated to Sonnet"
+            tip={TOOLTIPS.escalationRate}
+          />
+          <StatCard
+            icon={PiggyBank}
+            value={`$${saved.toFixed(2)}`}
+            label="saved vs Sonnet-only"
+            tip={TOOLTIPS.costSaved}
+            accent
+          />
+        </section>
 
-      <section className="mt-12">
-        <h2 className="text-xs uppercase tracking-wide opacity-50">Per-model breakdown</h2>
-        <ModelTable byModel={stats.byModel} />
-      </section>
+        <section className="mt-10">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Per-model breakdown
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              counted on the authoritative verdict per action
+            </span>
+          </div>
+          <Card className="overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="text-right">Calls</TableHead>
+                  <TableHead className="text-right">Total cost</TableHead>
+                  <TableHead className="text-right">Avg cost / call</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.byModel.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                      No classifications yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  stats.byModel.map((m) => (
+                    <TableRow key={m.model}>
+                      <TableCell className="font-mono">{prettyModel(m.model)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{m.calls}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        ${m.totalCost.toFixed(4)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        ${m.avgCost.toFixed(6)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </section>
 
-      <p className="mt-10 text-xs opacity-50">
-        &quot;Cost saved&quot; uses the average Sonnet cost from observed escalations
-        ({sonnetRow && sonnetRow.calls > 0
-          ? `${sonnetRow.calls} calls, $${sonnetAvg.toFixed(6)}/call`
-          : `0 observed; falling back to $${SONNET_AVG_FALLBACK_USD.toFixed(4)}/call`})
-        as the per-call rate for the &quot;Sonnet-only&quot; counterfactual.
-      </p>
-    </main>
+        <p className="mt-6 text-xs text-muted-foreground">
+          &quot;Saved vs Sonnet-only&quot; uses{" "}
+          {sonnetRow && sonnetRow.calls > 0
+            ? `the average Sonnet cost from ${sonnetRow.calls} observed escalation${sonnetRow.calls === 1 ? "" : "s"} ($${sonnetAvg.toFixed(6)}/call)`
+            : `a fallback of $${SONNET_AVG_FALLBACK_USD.toFixed(4)}/call (no Sonnet calls observed yet)`}{" "}
+          as the per-call rate for the &quot;Sonnet-only&quot; counterfactual.
+        </p>
+      </main>
+    </>
   );
 }
 
-function Stat({ value, caption }: { value: string; caption: string }) {
+function StatCard({
+  icon: Icon,
+  value,
+  label,
+  tip,
+  accent = false,
+}: {
+  icon: LucideIcon;
+  value: string;
+  label: string;
+  tip: string;
+  accent?: boolean;
+}) {
   return (
-    <div className="rounded border border-current/15 p-5">
-      <div className="text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
-      <div className="mt-1 text-xs opacity-60">{caption}</div>
-    </div>
-  );
-}
-
-function ModelTable({ byModel }: { byModel: DatasetStats["byModel"] }) {
-  if (byModel.length === 0) {
-    return <p className="mt-3 text-sm opacity-60">No classifications yet.</p>;
-  }
-  return (
-    <table className="mt-3 w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
-          <th className="py-2 pr-4 font-medium">Model</th>
-          <th className="py-2 pr-4 text-right font-medium">Calls</th>
-          <th className="py-2 pr-4 text-right font-medium">Total cost</th>
-          <th className="py-2 text-right font-medium">Avg cost / call</th>
-        </tr>
-      </thead>
-      <tbody>
-        {byModel.map((m) => (
-          <tr key={m.model} className="border-b border-current/5">
-            <td className="py-2 pr-4 font-mono">{prettyModel(m.model)}</td>
-            <td className="py-2 pr-4 text-right tabular-nums">{m.calls}</td>
-            <td className="py-2 pr-4 text-right tabular-nums">${m.totalCost.toFixed(4)}</td>
-            <td className="py-2 text-right tabular-nums">${m.avgCost.toFixed(6)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Card className={accent ? "border-foreground/20" : undefined}>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <span className="inline-flex size-8 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+          <Icon className="size-4" />
+        </span>
+        <HelpTip>{tip}</HelpTip>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+      </CardContent>
+    </Card>
   );
 }
 

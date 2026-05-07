@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check, X, HelpCircle, ThumbsUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { TOOLTIPS } from "@/lib/ui-copy";
+import { cn } from "@/lib/utils";
 
 type Label = "correct" | "incorrect" | "needs_review";
 
@@ -13,11 +22,17 @@ type Props = {
   existing_label: Label | null;
 };
 
-const BUTTONS: { key: string; label: string; value: Label | "confirm" }[] = [
-  { key: "1", label: "Confirm classifier", value: "confirm" },
-  { key: "2", label: "Override → correct", value: "correct" },
-  { key: "3", label: "Override → incorrect", value: "incorrect" },
-  { key: "4", label: "Mark needs_review", value: "needs_review" },
+const BUTTONS: {
+  key: string;
+  label: string;
+  value: Label | "confirm";
+  icon: React.ComponentType<{ className?: string }>;
+  tooltip: string;
+}[] = [
+  { key: "1", label: "Confirm classifier", value: "confirm", icon: ThumbsUp, tooltip: TOOLTIPS.btnConfirm },
+  { key: "2", label: "Override → correct", value: "correct", icon: Check, tooltip: TOOLTIPS.btnOverrideCorrect },
+  { key: "3", label: "Override → incorrect", value: "incorrect", icon: X, tooltip: TOOLTIPS.btnOverrideIncorrect },
+  { key: "4", label: "Mark needs_review", value: "needs_review", icon: HelpCircle, tooltip: TOOLTIPS.btnNeedsReview },
 ];
 
 export default function ReviewActions(props: Props) {
@@ -78,37 +93,54 @@ export default function ReviewActions(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.current_index, props.action_id, submitting]);
 
-  const dim = props.existing_label !== null;
-
   return (
-    <section className="mt-6">
+    <div className="space-y-3">
       {props.existing_label && (
-        <p className="mb-3 text-xs opacity-70">
-          Already labeled as <strong className="font-mono">{props.existing_label}</strong>. Re-clicking
-          will overwrite.
+        <p className="text-xs text-muted-foreground">
+          Already labeled as{" "}
+          <span className="font-mono font-semibold text-foreground">{props.existing_label}</span>
+          . Re-clicking will overwrite.
         </p>
       )}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {BUTTONS.map((b) => (
-          <button
-            key={b.key}
-            type="button"
-            onClick={() => submit(b.value)}
-            disabled={submitting !== null}
-            className={`rounded border border-current/30 px-4 py-2 text-left text-sm transition hover:bg-current/[0.05] disabled:opacity-40 ${dim ? "opacity-70" : ""}`}
-          >
-            <span className="mr-2 inline-block w-5 rounded bg-current/10 text-center font-mono text-xs">
-              {b.key}
-            </span>
-            {b.label}
-            {submitting === b.value && <span className="ml-2 opacity-60">…</span>}
-          </button>
+          <Tooltip key={b.key}>
+            <TooltipTrigger
+              type="button"
+              onClick={() => submit(b.value)}
+              disabled={submitting !== null}
+              className={cn(
+                "group/btn inline-flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-left text-sm transition-colors",
+                "hover:border-foreground/30 hover:bg-accent disabled:pointer-events-none disabled:opacity-50",
+                "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none",
+                props.existing_label && "opacity-90",
+              )}
+            >
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-flex size-5 items-center justify-center rounded border border-border bg-secondary font-mono text-[10px] text-muted-foreground group-hover/btn:bg-background">
+                  {b.key}
+                </span>
+                <b.icon className="size-3.5 text-muted-foreground" />
+                <span>{b.label}</span>
+              </span>
+              {submitting === b.value && (
+                <span className="text-xs text-muted-foreground">…</span>
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="top">{b.tooltip}</TooltipContent>
+          </Tooltip>
         ))}
       </div>
-      {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
-      <p className="mt-3 text-xs opacity-50">
-        Keyboard: <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>/<kbd>4</kbd> to label, <kbd>←</kbd>/<kbd>→</kbd> to navigate.
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        <span className="font-mono">1</span>/<span className="font-mono">2</span>/
+        <span className="font-mono">3</span>/<span className="font-mono">4</span> to label,{" "}
+        <span className="font-mono">←</span>/<span className="font-mono">→</span> to navigate without labeling.
       </p>
-    </section>
+    </div>
   );
 }

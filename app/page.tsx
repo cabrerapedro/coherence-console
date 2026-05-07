@@ -1,164 +1,185 @@
-import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import {
-  getFirstAction,
-  getFinalClassification,
-  recordClassificationCascade,
-  type AgentAction,
-  type ClassificationRow,
-} from "@/lib/db";
-import { classify, CLASSIFIER_VERSION } from "@/lib/classifier";
+  ArrowUpRight,
+  Database,
+  DollarSign,
+  Gauge,
+  LineChart,
+  ListChecks,
+  type LucideIcon,
+} from "lucide-react";
+import { Nav } from "@/components/Nav";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { getDatasetStats } from "@/lib/db";
+import { NAV_CARDS, PAGES, SITE } from "@/lib/ui-copy";
 
-async function classifyAction(formData: FormData) {
-  "use server";
-  const action_id = String(formData.get("action_id") ?? "");
-  if (!action_id) throw new Error("missing action_id");
+export const dynamic = "force-dynamic";
 
-  const action = await getFirstAction();
-  if (!action || action.id !== action_id) throw new Error("action not found");
+const SONNET_AVG_FALLBACK_USD = 0.012;
+const SONNET_MODEL = "anthropic/claude-sonnet-4-6";
 
-  const result = await classify(action);
-  await recordClassificationCascade({
-    action_id,
-    classifier_version: CLASSIFIER_VERSION,
-    haiku: result.haiku
-      ? {
-          ...result.haiku.classification,
-          model_used: result.haiku.model,
-          cost_usd: result.haiku.cost_usd,
-        }
-      : undefined,
-    sonnet: result.sonnet
-      ? {
-          ...result.sonnet.classification,
-          model_used: result.sonnet.model,
-          cost_usd: result.sonnet.cost_usd,
-        }
-      : undefined,
-  });
-  revalidatePath("/");
-}
+export default async function HomePage() {
+  const stats = await getDatasetStats();
+  const escalationRate =
+    stats.finalClassifications > 0 ? stats.escalationCount / stats.finalClassifications : 0;
+  const sonnetRow = stats.byModel.find((m) => m.model === SONNET_MODEL);
+  const sonnetAvg = sonnetRow && sonnetRow.calls > 0 ? sonnetRow.avgCost : SONNET_AVG_FALLBACK_USD;
+  const saved = sonnetAvg * stats.totalActions - stats.totalCostUsd;
 
-export default async function Page() {
-  const action = await getFirstAction();
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Coherence Console</h1>
-        <nav className="flex gap-4 text-xs">
-          <a href="/review" className="opacity-60 hover:opacity-100">review</a>
-          <a href="/evals" className="opacity-60 hover:opacity-100">evals</a>
-          <a href="/stats" className="opacity-60 hover:opacity-100">stats</a>
-        </nav>
-      </header>
-      <p className="mt-1 text-sm opacity-70">
-        Review AI agent actions, classify them, and detect regressions over time.
-      </p>
+    <>
+      <Nav />
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <section className="space-y-2 pt-4">
+          <Badge variant="secondary" className="font-mono">
+            v1 · 80 actions · ALOHAS demo
+          </Badge>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            {PAGES.home.title}
+          </h1>
+          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+            {SITE.tagline}
+          </p>
+          <p className="max-w-3xl pt-2 text-sm text-muted-foreground">{PAGES.home.subtitle}</p>
+        </section>
 
-      {!action ? (
-        <EmptyState />
-      ) : (
-        <ActionView action={action} classification={await getFinalClassification(action.id)} />
-      )}
-    </main>
+        <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <MiniStat
+            icon={Database}
+            value={stats.totalActions.toString()}
+            label="actions in dataset"
+          />
+          <MiniStat
+            icon={DollarSign}
+            value={`$${stats.totalCostUsd.toFixed(4)}`}
+            label="spent classifying"
+          />
+          <MiniStat
+            icon={Gauge}
+            value={`${(escalationRate * 100).toFixed(1)}%`}
+            label="escalated to Sonnet"
+          />
+        </section>
+
+        <section className="mt-10">
+          <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Open a view
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <NavCard
+              href="/review"
+              icon={ListChecks}
+              title={NAV_CARDS.review.title}
+              description={NAV_CARDS.review.description}
+              cta={NAV_CARDS.review.cta}
+            />
+            <NavCard
+              href="/evals"
+              icon={LineChart}
+              title={NAV_CARDS.evals.title}
+              description={NAV_CARDS.evals.description}
+              cta={NAV_CARDS.evals.cta}
+            />
+            <NavCard
+              href="/stats"
+              icon={Gauge}
+              title={NAV_CARDS.stats.title}
+              description={NAV_CARDS.stats.description}
+              cta={NAV_CARDS.stats.cta}
+            />
+          </div>
+        </section>
+
+        <footer className="mt-16 border-t border-border pt-6 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{SITE.footer}</span>
+            <div className="flex items-center gap-3">
+              <a
+                href="https://github.com/cabrerapedro/coherence-console"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground"
+              >
+                Source on GitHub
+              </a>
+              <span className="opacity-30">·</span>
+              <a
+                href="https://github.com/cabrerapedro/coherence-console/blob/main/docs/findings_block_full.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground"
+              >
+                Findings doc
+              </a>
+              <span className="opacity-30">·</span>
+              <span>
+                Cost saved vs Sonnet-only:{" "}
+                <span className="font-mono text-foreground">${saved.toFixed(2)}</span>
+              </span>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </>
   );
 }
 
-function EmptyState() {
-  return (
-    <section className="mt-10 rounded border border-dashed border-current/20 p-6 text-sm opacity-80">
-      No actions in the database yet. Run <code className="font-mono">npm run seed:one</code>.
-    </section>
-  );
-}
-
-function ActionView({
-  action,
-  classification,
+function MiniStat({
+  icon: Icon,
+  value,
+  label,
 }: {
-  action: AgentAction;
-  classification: ClassificationRow | null;
+  icon: LucideIcon;
+  value: string;
+  label: string;
 }) {
   return (
-    <section className="mt-8 space-y-6">
-      <ActionCard action={action} />
-      {classification ? (
-        <ClassificationCard c={classification} />
-      ) : (
-        <p className="text-sm opacity-70">Not classified yet.</p>
-      )}
-      <form action={classifyAction}>
-        <input type="hidden" name="action_id" value={action.id} />
-        <button
-          type="submit"
-          className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
+    <Card>
+      <CardContent className="flex items-center gap-4 px-5 py-4">
+        <div className="flex size-10 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+          <Icon className="size-5" />
+        </div>
+        <div>
+          <div className="text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+          <div className="text-xs text-muted-foreground">{label}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NavCard({
+  href,
+  icon: Icon,
+  title,
+  description,
+  cta,
+}: {
+  href: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  cta: string;
+}) {
+  return (
+    <Card className="group transition-colors hover:border-foreground/30">
+      <CardHeader>
+        <div className="mb-2 flex size-9 items-center justify-center rounded-md bg-secondary text-muted-foreground transition-colors group-hover:bg-foreground group-hover:text-background">
+          <Icon className="size-4" />
+        </div>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1 text-sm font-medium text-foreground transition-opacity hover:opacity-70"
         >
-          {classification ? "Re-classify" : "Classify with current model"}
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function ActionCard({ action }: { action: AgentAction }) {
-  return (
-    <article className="rounded border border-current/15 p-5 text-sm">
-      <header className="mb-3 flex items-center justify-between text-xs opacity-70">
-        <span className="font-mono">{action.agent_id}</span>
-        <span className="font-mono">autonomy L{action.autonomy_level}</span>
-      </header>
-      <Field label="Input" value={action.input} />
-      <Field label="Context" value={action.context ?? "—"} />
-      <Field label="Output" value={action.output} />
-      <Field
-        label="Tool calls"
-        value={action.tool_calls.length > 0 ? action.tool_calls.join(", ") : "none"}
-      />
-    </article>
-  );
-}
-
-function ClassificationCard({ c }: { c: ClassificationRow }) {
-  return (
-    <article className="rounded border border-current/15 p-5 text-sm">
-      <header className="mb-3 flex flex-wrap items-center gap-3 text-xs">
-        <Badge>{c.classification}</Badge>
-        <span className="opacity-70">confidence {Number(c.confidence).toFixed(2)}</span>
-        <span className="opacity-70 font-mono">{c.model_used}</span>
-        <span className="opacity-70">${Number(c.cost_usd).toFixed(6)}</span>
-      </header>
-      <Field
-        label="Reasoning"
-        value={
-          <ol className="list-decimal pl-5 space-y-1">
-            {c.reasoning_steps.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
-        }
-      />
-      <Field
-        label="Policy violations"
-        value={c.policy_violations.length > 0 ? c.policy_violations.join(", ") : "none"}
-      />
-      <Field label="Autonomy appropriate" value={c.autonomy_appropriate ? "yes" : "no"} />
-      <Field label="Escalation recommended" value={c.escalation_recommended ? "yes" : "no"} />
-    </article>
-  );
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="mt-3 first:mt-0">
-      <div className="text-xs uppercase tracking-wide opacity-50">{label}</div>
-      <div className="mt-0.5">{value}</div>
-    </div>
-  );
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded border border-current/30 px-2 py-0.5 font-mono text-xs">
-      {children}
-    </span>
+          {cta}
+          <ArrowUpRight className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }

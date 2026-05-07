@@ -1,5 +1,22 @@
-import Link from "next/link";
+import { Sparkles, Terminal } from "lucide-react";
+import { Nav } from "@/components/Nav";
+import { HelpTip } from "@/components/HelpTip";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getEvalRuns, type EvalRun } from "@/lib/db";
+import { PAGES, TOOLTIPS } from "@/lib/ui-copy";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -10,89 +27,158 @@ const SONNET_MODEL = "anthropic/claude-sonnet-4-6";
 export default async function EvalsPage() {
   const runs = await getEvalRuns();
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Eval Runs — Coherence Console</h1>
-        <Link href="/" className="text-xs opacity-60 hover:opacity-100">← home</Link>
-      </header>
-      <p className="mt-1 text-sm opacity-70">
-        Run <code className="font-mono">npm run eval</code> from the CLI to record a new run.
-      </p>
+    <>
+      <Nav />
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight">{PAGES.evals.title}</h1>
+          <p className="text-sm text-muted-foreground">{PAGES.evals.subtitle}</p>
+        </header>
 
-      {runs.length === 0 ? (
-        <p className="mt-10 text-sm opacity-60">No eval runs recorded yet.</p>
-      ) : (
-        <RunsTable runs={runs} />
-      )}
-    </main>
+        <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground">
+          <Terminal className="size-3.5" />
+          <span>
+            Run <code className="font-mono text-foreground">npm run eval</code> from the CLI to record a new run.
+          </span>
+        </div>
+
+        {runs.length === 0 ? (
+          <Card className="mt-8">
+            <CardContent className="px-6 py-10 text-center text-sm text-muted-foreground">
+              No eval runs recorded yet.
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="mt-6 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[170px]">Timestamp</TableHead>
+                  <TableHead className="w-[70px]">Version</TableHead>
+                  <TableHead>Models</TableHead>
+                  <TableHead className="text-right">
+                    <ColHeader label="Accuracy" tip={TOOLTIPS.evalAccuracy} />
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <ColHeader label="Precision" tip={TOOLTIPS.evalPrecision} />
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <ColHeader label="Recall" tip={TOOLTIPS.evalRecall} />
+                  </TableHead>
+                  <TableHead className="text-right">Total cost</TableHead>
+                  <TableHead className="text-right">
+                    <ColHeader label="Esc rate" tip={TOOLTIPS.evalEscalationRate} />
+                  </TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {runs.map((r, i) => {
+                  const synthetic = (r.notes ?? "").startsWith(SYNTHETIC_NOTE_PREFIX);
+                  const newer = i > 0 ? runs[i - 1] : null;
+                  const delta = i > 0 && newer ? Number(r.accuracy) - Number(newer.accuracy) : null;
+                  const isLatest = i === 0;
+                  return (
+                    <TableRow key={r.id} className={cn(isLatest && "bg-secondary/40")}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {formatTimestamp(r.created_at)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          {r.classifier_version}
+                        </Badge>
+                        {isLatest && (
+                          <Badge className="ml-1 bg-emerald-500/15 font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                            latest
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <ModelPair primary={r.model_primary} escalation={r.model_escalation} />
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {synthetic ? (
+                          <SyntheticDash />
+                        ) : (
+                          <>
+                            {Number(r.accuracy).toFixed(3)}
+                            {delta !== null && <DeltaSpan value={delta} />}
+                          </>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {synthetic ? <SyntheticDash /> : Number(r.precision_score).toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {synthetic ? <SyntheticDash /> : Number(r.recall_score).toFixed(3)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        ${Number(r.total_cost_usd).toFixed(4)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {(Number(r.escalation_rate) * 100).toFixed(1)}%
+                      </TableCell>
+                      <TableCell className="max-w-md text-xs text-muted-foreground">
+                        {synthetic && (
+                          <Badge className="mr-1 mb-1 inline-flex items-center gap-1 bg-amber-500/15 font-mono text-[10px] text-amber-700 dark:text-amber-400">
+                            <Sparkles className="size-3" />
+                            synthetic baseline
+                          </Badge>
+                        )}
+                        {r.notes ?? ""}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </main>
+    </>
   );
 }
 
-function RunsTable({ runs }: { runs: EvalRun[] }) {
+function ColHeader({ label, tip }: { label: string; tip: string }) {
   return (
-    <table className="mt-8 w-full border-collapse text-xs">
-      <thead>
-        <tr className="border-b border-current/15 text-left uppercase tracking-wide opacity-60">
-          <th className="py-2 pr-3 font-medium">Timestamp</th>
-          <th className="py-2 pr-3 font-medium">Version</th>
-          <th className="py-2 pr-3 font-medium">Primary</th>
-          <th className="py-2 pr-3 font-medium">Escalation</th>
-          <th className="py-2 pr-3 text-right font-medium">Accuracy</th>
-          <th className="py-2 pr-3 text-right font-medium">Precision</th>
-          <th className="py-2 pr-3 text-right font-medium">Recall</th>
-          <th className="py-2 pr-3 text-right font-medium">Total cost</th>
-          <th className="py-2 pr-3 text-right font-medium">Esc rate</th>
-          <th className="py-2 font-medium">Notes</th>
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((r, i) => {
-          const synthetic = (r.notes ?? "").startsWith(SYNTHETIC_NOTE_PREFIX);
-          const newer = i > 0 ? runs[i - 1] : null;
-          const delta = i > 0 && newer ? Number(r.accuracy) - Number(newer.accuracy) : null;
-          const isLatest = i === 0;
-          return (
-            <tr
-              key={r.id}
-              className={`border-b border-current/5 ${isLatest ? "bg-current/[0.04]" : ""}`}
-            >
-              <td className="py-2 pr-3 font-mono opacity-80">{formatTimestamp(r.created_at)}</td>
-              <td className="py-2 pr-3 font-mono">{r.classifier_version}</td>
-              <td className="py-2 pr-3 font-mono">{prettyModel(r.model_primary)}</td>
-              <td className="py-2 pr-3 font-mono">{prettyModel(r.model_escalation)}</td>
-              <td className="py-2 pr-3 text-right tabular-nums">
-                {synthetic ? "—" : Number(r.accuracy).toFixed(3)}
-                {!synthetic && delta !== null && <DeltaSpan value={delta} />}
-              </td>
-              <td className="py-2 pr-3 text-right tabular-nums">
-                {synthetic ? "—" : Number(r.precision_score).toFixed(3)}
-              </td>
-              <td className="py-2 pr-3 text-right tabular-nums">
-                {synthetic ? "—" : Number(r.recall_score).toFixed(3)}
-              </td>
-              <td className="py-2 pr-3 text-right tabular-nums">
-                ${Number(r.total_cost_usd).toFixed(4)}
-              </td>
-              <td className="py-2 pr-3 text-right tabular-nums">
-                {(Number(r.escalation_rate) * 100).toFixed(1)}%
-              </td>
-              <td className="py-2 max-w-xs opacity-70">{r.notes ?? ""}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <span className="inline-flex items-center justify-end gap-1">
+      {label}
+      <HelpTip side="top">{tip}</HelpTip>
+    </span>
+  );
+}
+
+function ModelPair({ primary, escalation }: { primary: string; escalation: string | null }) {
+  return (
+    <span className="flex flex-col gap-0.5 font-mono">
+      <span className="text-foreground">{prettyModel(primary)}</span>
+      {escalation && (
+        <span className="text-muted-foreground">→ {prettyModel(escalation)}</span>
+      )}
+    </span>
   );
 }
 
 function DeltaSpan({ value }: { value: number }) {
-  if (Math.abs(value) < 0.0005) return <span className="ml-1 opacity-50">(±0)</span>;
-  const sign = value > 0 ? "+" : "−";
-  const color = value > 0 ? "text-green-600" : "text-red-600";
+  if (Math.abs(value) < 0.0005) {
+    return <span className="ml-1 text-xs text-muted-foreground">±0</span>;
+  }
+  const positive = value > 0;
+  const sign = positive ? "+" : "−";
+  const color = positive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
   return (
-    <span className={`ml-1 ${color}`}>
+    <span className={`ml-1 text-xs ${color}`}>
       ({sign}
       {Math.abs(value).toFixed(3)})
+    </span>
+  );
+}
+
+function SyntheticDash() {
+  return (
+    <span className="inline-flex items-center justify-end gap-1 text-muted-foreground">
+      —
+      <HelpTip side="left">{TOOLTIPS.evalSyntheticBadge}</HelpTip>
     </span>
   );
 }
