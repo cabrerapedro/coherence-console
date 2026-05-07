@@ -20,11 +20,13 @@ async function classifyAction(formData: FormData) {
   await recordClassificationCascade({
     action_id,
     classifier_version: CLASSIFIER_VERSION,
-    haiku: {
-      ...result.haiku.classification,
-      model_used: result.haiku.model,
-      cost_usd: result.haiku.cost_usd,
-    },
+    haiku: result.haiku
+      ? {
+          ...result.haiku.classification,
+          model_used: result.haiku.model,
+          cost_usd: result.haiku.cost_usd,
+        }
+      : undefined,
     sonnet: result.sonnet
       ? {
           ...result.sonnet.classification,

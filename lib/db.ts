@@ -133,22 +133,25 @@ async function insertClassification(c: ClassificationInsert): Promise<void> {
   `;
 }
 
+type ClassificationRunInsert = Omit<ClassificationInsert, "action_id" | "classifier_version" | "is_final">;
+
 export type CascadeRecord = {
   action_id: string;
   classifier_version: string;
-  haiku: Omit<ClassificationInsert, "action_id" | "classifier_version" | "is_final">;
-  sonnet?: Omit<ClassificationInsert, "action_id" | "classifier_version" | "is_final">;
+  haiku?: ClassificationRunInsert;
+  sonnet?: ClassificationRunInsert;
 };
 
 export async function recordClassificationCascade(r: CascadeRecord): Promise<void> {
   await sql`update classifications set is_final = false where action_id = ${r.action_id} and is_final = true`;
-  const haikuFinal = !r.sonnet;
-  await insertClassification({
-    ...r.haiku,
-    action_id: r.action_id,
-    classifier_version: r.classifier_version,
-    is_final: haikuFinal,
-  });
+  if (r.haiku) {
+    await insertClassification({
+      ...r.haiku,
+      action_id: r.action_id,
+      classifier_version: r.classifier_version,
+      is_final: !r.sonnet,
+    });
+  }
   if (r.sonnet) {
     await insertClassification({
       ...r.sonnet,

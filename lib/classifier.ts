@@ -1,4 +1,9 @@
-import { generateObject } from "ai";
+// Gateway notes (verified by scripts/classify_one.ts before wiring this in):
+//  - model strings use hyphens, not dots: 'anthropic/claude-haiku-4-5'.
+//  - usage in AI SDK v6 is { inputTokens, outputTokens } — not v5's prompt/completion fields.
+//  - generateObject's cost-tracking through the native gateway works without provider-specific config.
+
+import { generateObject, NoObjectGeneratedError, APICallError } from "ai";
 import { z } from "zod";
 import { HAIKU_4_5, SONNET_4_6, priceFor } from "./pricing.ts";
 import type { AgentAction } from "./db.ts";
@@ -16,6 +21,35 @@ export const classifierSchema = z.object({
 });
 
 export type Classification = z.infer<typeof classifierSchema>;
+
+export type ClassifierErrorKind =
+  | "invalid_output"
+  | "rate_limit"
+  | "timeout"
+  | "gateway_error"
+  | "unknown";
+
+export class ClassifierError extends Error {
+  readonly kind: ClassifierErrorKind;
+  readonly model: string;
+  readonly action_id: string;
+  constructor(kind: ClassifierErrorKind, model: string, action_id: string, cause: unknown) {
+    super(`ClassifierError kind=${kind} model=${model} action_id=${action_id}`, { cause });
+    this.kind = kind;
+    this.model = model;
+    this.action_id = action_id;
+  }
+}
+
+function classifyError(err: unknown): ClassifierErrorKind {
+  if (NoObjectGeneratedError.isInstance(err)) return "invalid_output";
+  if (APICallError.isInstance(err)) {
+    if (err.statusCode === 429) return "rate_limit";
+    if (err.statusCode === 408 || err.statusCode === 504) return "timeout";
+    return "gateway_error";
+  }
+  return "unknown";
+}
 
 const SYSTEM_PROMPT = `You are a quality reviewer for a customer-service AI agent at an online fashion retailer. You are given a single action the agent took and you must decide whether the agent did the right thing.
 
@@ -47,28 +81,49 @@ export type ClassificationRun = {
 };
 
 async function classifyOnce(model: string, action: AgentAction): Promise<ClassificationRun> {
-  const { object, usage } = await generateObject({
-    model,
-    schema: classifierSchema,
-    system: SYSTEM_PROMPT,
-    prompt: buildUserMessage(action),
-  });
-  return {
-    model,
-    classification: object,
-    cost_usd: priceFor(model, usage),
-  };
+  try {
+    const { object, usage } = await generateObject({
+      model,
+      schema: classifierSchema,
+      system: SYSTEM_PROMPT,
+      prompt: buildUserMessage(action),
+    });
+    return { model, classification: object, cost_usd: priceFor(model, usage) };
+  } catch (err) {
+    const kind = classifyError(err);
+    console.error(`ClassifierError kind=${kind} model=${model} action_id=${action.id}`, err);
+    throw new ClassifierError(kind, model, action.id, err);
+  }
 }
 
 export type CascadeResult = {
-  haiku: ClassificationRun;
+  haiku?: ClassificationRun;
+  haiku_error?: ClassifierErrorKind;
   sonnet?: ClassificationRun;
   final: ClassificationRun;
   total_cost_usd: number;
 };
 
 export async function classify(action: AgentAction): Promise<CascadeResult> {
-  const haiku = await classifyOnce(HAIKU_4_5, action);
+  let haiku: ClassificationRun;
+  try {
+    haiku = await classifyOnce(HAIKU_4_5, action);
+  } catch (err) {
+    if (err instanceof ClassifierError && err.kind === "invalid_output") {
+      // Haiku produced unparseable output. Skip straight to Sonnet — same
+      // pattern as low-confidence escalation, just triggered by structural
+      // failure rather than uncertainty.
+      const sonnet = await classifyOnce(SONNET_4_6, action);
+      return {
+        haiku_error: "invalid_output",
+        sonnet,
+        final: sonnet,
+        total_cost_usd: sonnet.cost_usd,
+      };
+    }
+    throw err;
+  }
+
   if (haiku.classification.confidence >= ESCALATION_THRESHOLD) {
     return { haiku, final: haiku, total_cost_usd: haiku.cost_usd };
   }
