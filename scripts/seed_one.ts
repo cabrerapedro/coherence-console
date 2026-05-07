@@ -1,4 +1,4 @@
-import { findActionByAgentAndTimestamp, insertAgentAction } from "../lib/db.ts";
+import { insertAgentAction } from "../lib/db.ts";
 
 const ACTION = {
   agent_id: "support-bot-v3",
@@ -13,21 +13,9 @@ const ACTION = {
 };
 
 async function main() {
-  const existing = await findActionByAgentAndTimestamp(ACTION.agent_id, ACTION.timestamp);
-  if (existing) {
-    console.log(`seed_one: action ${existing.id} already present, skipping`);
-    return;
-  }
-  const inserted = await insertAgentAction({
-    agent_id: ACTION.agent_id,
-    timestamp: ACTION.timestamp,
-    input: ACTION.input,
-    context: ACTION.context,
-    output: ACTION.output,
-    tool_calls: ACTION.tool_calls,
-    autonomy_level: ACTION.autonomy_level,
-  });
-  console.log(`seed_one: inserted action ${inserted.id}`);
+  const result = await insertAgentAction({ ...ACTION, context: ACTION.context });
+  const verb = result.inserted ? "inserted" : "already present, skipped";
+  console.log(`seed_one: ${verb} action ${result.id}`);
 }
 
 main().catch((err) => {

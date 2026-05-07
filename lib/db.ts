@@ -34,18 +34,6 @@ export async function getActionById(id: string): Promise<AgentAction | null> {
   return rows[0] ?? null;
 }
 
-export async function findActionByAgentAndTimestamp(
-  agent_id: string,
-  timestamp: string,
-): Promise<{ id: string } | null> {
-  const rows = (await sql`
-    select id from agent_actions
-    where agent_id = ${agent_id} and timestamp = ${timestamp}
-    limit 1
-  `) as { id: string }[];
-  return rows[0] ?? null;
-}
-
 export type AgentActionInput = {
   agent_id: string;
   timestamp: string;
@@ -56,16 +44,25 @@ export type AgentActionInput = {
   autonomy_level: number;
 };
 
-export async function insertAgentAction(action: AgentActionInput): Promise<{ id: string }> {
-  const rows = (await sql`
+export async function insertAgentAction(
+  action: AgentActionInput,
+): Promise<{ id: string; inserted: boolean }> {
+  const inserted = (await sql`
     insert into agent_actions
       (agent_id, timestamp, input, context, output, tool_calls, autonomy_level)
     values
       (${action.agent_id}, ${action.timestamp}, ${action.input}, ${action.context},
        ${action.output}, ${JSON.stringify(action.tool_calls)}::jsonb, ${action.autonomy_level})
+    on conflict (agent_id, timestamp) do nothing
     returning id
   `) as { id: string }[];
-  return rows[0];
+  if (inserted[0]) return { id: inserted[0].id, inserted: true };
+  const existing = (await sql`
+    select id from agent_actions
+    where agent_id = ${action.agent_id} and timestamp = ${action.timestamp}
+    limit 1
+  `) as { id: string }[];
+  return { id: existing[0].id, inserted: false };
 }
 
 export async function getFirstAction(): Promise<AgentAction | null> {
