@@ -191,30 +191,74 @@ export type DatasetStats = {
   byModel: { model: string; calls: number; totalCost: number; avgCost: number }[];
 };
 
-export async function getDatasetActionAtIndex(index: number): Promise<AgentAction | null> {
+// Source filtering by agent_id prefix:
+//   "aloha-"                       → the 80-action hand-designed demo dataset
+//   "upload-"                      → ALL uploaded actions across every session
+//   "upload-<sessionId>-"          → only the current session's uploads
+// Pages compute the right prefix and pass it to the helpers below. Keeping the
+// helpers prefix-agnostic means session isolation lives in the page/route layer.
+export type ActionSource = "demo" | "upload";
+export const DEMO_PREFIX = "aloha-";
+export const UPLOAD_GLOBAL_PREFIX = "upload-";
+
+export function uploadPrefixForSession(sessionId: string): string {
+  return `${UPLOAD_GLOBAL_PREFIX}${sessionId}-`;
+}
+
+export async function getDatasetActionAtIndex(
+  index: number,
+  prefix: string,
+): Promise<AgentAction | null> {
   const rows = (await sql`
     select id, agent_id, timestamp, input, context, output, tool_calls, autonomy_level, created_at
     from agent_actions
-    where agent_id like 'aloha-%'
+    where agent_id like ${prefix + "%"}
     order by timestamp asc
     offset ${index} limit 1
   `) as unknown as AgentAction[];
   return rows[0] ?? null;
 }
 
-export async function getDatasetActionCount(): Promise<number> {
+export async function getDatasetActionCount(prefix: string): Promise<number> {
   const rows = (await sql`
-    select count(*)::int as n from agent_actions where agent_id like 'aloha-%'
+    select count(*)::int as n from agent_actions where agent_id like ${prefix + "%"}
   `) as unknown as { n: number }[];
   return rows[0]?.n ?? 0;
 }
 
-export async function getReviewedCount(): Promise<number> {
+export async function getReviewedCount(prefix: string): Promise<number> {
   const rows = (await sql`
     select count(*)::int as n
     from golden_set g
     join agent_actions a on a.id = g.action_id
-    where a.agent_id like 'aloha-%'
+    where a.agent_id like ${prefix + "%"}
+  `) as unknown as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+export async function getUnclassifiedActionsForPrefix(prefix: string): Promise<AgentAction[]> {
+  return (await sql`
+    select a.id, a.agent_id, a.timestamp, a.input, a.context, a.output,
+           a.tool_calls, a.autonomy_level, a.created_at
+    from agent_actions a
+    where a.agent_id like ${prefix + "%"}
+      and not exists (
+        select 1 from classifications c
+        where c.action_id = a.id and c.is_final = true
+      )
+    order by a.created_at asc
+  `) as unknown as AgentAction[];
+}
+
+export async function getUnclassifiedCountForPrefix(prefix: string): Promise<number> {
+  const rows = (await sql`
+    select count(*)::int as n
+    from agent_actions a
+    where a.agent_id like ${prefix + "%"}
+      and not exists (
+        select 1 from classifications c
+        where c.action_id = a.id and c.is_final = true
+      )
   `) as unknown as { n: number }[];
   return rows[0]?.n ?? 0;
 }

@@ -10,7 +10,7 @@ Both are documented below as features of the eval, not as bugs of the classifier
 
 ## What this does
 
-You upload a sample of agent actions from production. A small classifier (Claude Haiku 4.5) reads each one and decides whether the agent did the right thing — `correct`, `incorrect`, or `needs_review` — with structured reasoning. A human reviewer walks through the dataset on `/review` (one action at a time, keyboard-driven), confirming or overriding each verdict; the labels become a golden set. `/evals` shows the history of classifier-vs-golden-set runs over time, and `/stats` shows total cost and the Haiku/Sonnet breakdown. From then on, every prompt change or model upgrade can be evaluated against that golden set with one CLI command (`npm run eval`).
+You upload a small sample of agent actions (up to 20 per upload) via the `/upload` route, or load the included 80-action hand-designed dataset. Each action is classified by Claude Haiku 4.5 with a Sonnet 4.6 fallback on semantic uncertainty, with structured reasoning. A human reviewer walks through the actions on `/review` (one at a time, keyboard-driven), confirming or overriding each verdict; the labels become a golden set. `/evals` shows the history of classifier-vs-golden-set runs over time, and `/stats` shows total cost and the Haiku/Sonnet breakdown. From then on, every prompt change or model upgrade can be evaluated against that golden set with one CLI command (`npm run eval`).
 
 The point is not the classifier. The point is installing the habit of asking the question — *did the agent do the right thing?* — at a cadence and rigor that telemetry tools (Langfuse, Sentry) cannot replicate. Telemetry sees what happened. This sees whether what happened was right.
 
@@ -34,6 +34,8 @@ npm run dev
 ```
 
 Then [http://localhost:3000](http://localhost:3000). The deployed version is at [https://coherence-console.vercel.app](https://coherence-console.vercel.app) (password-gated; password supplied separately).
+
+The `/upload` route is the primary entry point for new data; the `seed:*` scripts are for the included demo dataset only.
 
 The four routes:
 
@@ -148,6 +150,8 @@ Concrete moments:
 
 - **Single-tenant, password-gated, no real auth.** This is a demo, not a product. The gate is a single shared secret stored in `ACCESS_PASSWORD` and checked in `middleware.ts` against a hash held in a cookie. A real deployment needs proper authentication, per-team isolation, and audit logging; all deliberately scoped out.
 
+- **Uploaded data is shared across all viewers of the demo URL, with a global hard cap of 100 actions across all sessions.** Per-reviewer isolation is implemented via cookie-tagged `agent_id` prefixes (`upload-<sessionId>-...`) so `/stats` and `/evals` stay clean for the included dataset and each reviewer sees only their own uploaded actions in `/review`'s "Your cases" tab. For a real product this would be replaced with proper auth + DB-level row-level security.
+
 - **No Langfuse instrumentation in v1.** This tool would benefit from the same observability discipline it argues for. Wiring Langfuse on every classifier call is in "next 4 hours" below.
 
 - **The first eval row is a synthetic baseline.** `golden_set` starts empty (no human has labeled anything yet). The `/evals` page renders `—` for accuracy/precision/recall on synthetic-baseline rows because comparing the classifier against itself produces a trivial 1.000 that would mislead. After someone labels a few entries via `/review` and re-runs `npm run eval`, real metrics appear.
@@ -166,28 +170,43 @@ In rough priority order:
 
 4. **A weekly digest export.** One page, the 50 actions reviewed that week, the eval result, the diff vs prior week. Email-friendly. This is the artifact a real ALOHAS team would consume; the rest of the tool is the engine that produces it.
 
+5. **Per-session retention policy + automatic cleanup of uploaded data after the demo cap is reached.** Currently upload data persists in the demo DB up to a global cap of 100 actions; for any real use, this would be replaced with per-tenant isolation and time-bounded retention windows.
+
 ---
 
 ## Repo orientation
 
 ```
 app/
-  page.tsx                            # Server-rendered home: action card + classify button + result
-  layout.tsx                          # Root layout, metadata, fonts
-  globals.css                         # Tailwind + theme tokens
+  page.tsx                            # Console landing: hero + 4 nav cards + footer
+  layout.tsx                          # Root layout, metadata, fonts, TooltipProvider
+  globals.css                         # Tailwind v4 + shadcn neutral OKLCH theme
   login/page.tsx                      # Demo password gate
-  review/page.tsx                     # Per-action review (server shell)
+  review/page.tsx                     # Per-action review (server shell, source tabs)
   review/ReviewActions.tsx            # Client: 4 buttons + keyboard shortcuts
+  review/ClassifyPendingButton.tsx    # Client: classify uploaded actions iteratively
   evals/page.tsx                      # Eval-run history table
   stats/page.tsx                      # Cost + escalation breakdown
+  upload/page.tsx                     # Upload UI shell with warning + capacity badges
+  upload/UploadForm.tsx               # Client: drag-drop + paste + validate + classify
   api/auth/route.ts                   # POST password → set coherence_auth cookie
   api/review/route.ts                 # POST upsert into golden_set
-middleware.ts                         # Routes through coherence_auth check
+  api/upload/route.ts                 # POST validate + prefix + insert (no sync classify)
+  api/classify-one/route.ts           # POST classify a single uploaded action by id
+  api/pending-uploads/route.ts        # GET unclassified action_ids for the session
+middleware.ts                         # Auth gate + per-session cookie minting
+components/
+  Nav.tsx                             # Top nav with active-route highlight
+  HelpTip.tsx                         # (?) icon → tooltip helper
+  ClassificationBadge.tsx             # Color-coded verdict pill (correct/incorrect/needs_review)
+  ui/                                 # shadcn primitives (Button, Card, Tooltip, Table, ...)
 lib/
   classifier.ts                       # Single source of truth for the LLM call + cascade rule
   db.ts                               # All Neon queries (no scattered driver imports)
   pricing.ts                          # Token-usage cost calculation
   auth.ts                             # Web-Crypto password hashing + timing-safe compare
+  ui-copy.ts                          # All subtitles + tooltip strings + nav-card copy
+  utils.ts                            # cn() class-merge helper (clsx + tailwind-merge)
 scripts/
   migrate.ts                          # Apply a SQL migration file via the Neon Pool
   seed_one.ts                         # Single-action seed (smoke test for DB write path)
@@ -201,6 +220,7 @@ data/
   synthetic_actions.json              # 80 hand-designed agent actions
   synthetic_actions.schema.json       # JSON Schema for the dataset file
   classifications_v1_block_full.json  # Frozen snapshot, diff baseline for future runs
+  sample_upload.json                  # 3-action sample shown on /upload (also in public/)
 docs/
   findings_block_full.md              # Source notes for this README
 migrations/

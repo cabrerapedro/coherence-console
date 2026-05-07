@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
 import { Nav } from "@/components/Nav";
 import { HelpTip } from "@/components/HelpTip";
@@ -17,12 +18,18 @@ import {
   getReviewedCount,
   getFinalClassification,
   getGoldenLabel,
+  getUnclassifiedCountForPrefix,
+  uploadPrefixForSession,
+  DEMO_PREFIX,
   type AgentAction,
+  type ActionSource,
   type ClassificationRow,
   type GoldenLabel,
 } from "@/lib/db";
 import { PAGES, TOOLTIPS } from "@/lib/ui-copy";
+import { UPLOAD_SESSION_COOKIE } from "@/middleware";
 import ReviewActions from "./ReviewActions";
+import { ClassifyPendingButton } from "./ClassifyPendingButton";
 
 const HAIKU_MODEL = "anthropic/claude-haiku-4-5";
 const SONNET_MODEL = "anthropic/claude-sonnet-4-6";
@@ -30,16 +37,25 @@ const SONNET_MODEL = "anthropic/claude-sonnet-4-6";
 export default async function ReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ index?: string }>;
+  searchParams: Promise<{ index?: string; source?: string }>;
 }) {
-  const { index: indexParam } = await searchParams;
-  const index = Math.max(0, parseInt(indexParam ?? "0", 10) || 0);
-  const [action, totalCount, reviewedCount] = await Promise.all([
-    getDatasetActionAtIndex(index),
-    getDatasetActionCount(),
-    getReviewedCount(),
-  ]);
+  const params = await searchParams;
+  const source: ActionSource = params.source === "upload" ? "upload" : "demo";
+  const index = Math.max(0, parseInt(params.index ?? "0", 10) || 0);
 
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get(UPLOAD_SESSION_COOKIE)?.value ?? "";
+  const sessionPrefix = sessionId ? uploadPrefixForSession(sessionId) : "upload-__none__-";
+  const activePrefix = source === "demo" ? DEMO_PREFIX : sessionPrefix;
+
+  const [action, demoCount, uploadCount, reviewedCount, pendingUploadCount] = await Promise.all([
+    getDatasetActionAtIndex(index, activePrefix),
+    getDatasetActionCount(DEMO_PREFIX),
+    getDatasetActionCount(sessionPrefix),
+    getReviewedCount(activePrefix),
+    source === "upload" ? getUnclassifiedCountForPrefix(sessionPrefix) : Promise.resolve(0),
+  ]);
+  const totalCount = source === "demo" ? demoCount : uploadCount;
   const reviewedPct = totalCount > 0 ? Math.round((reviewedCount / totalCount) * 100) : 0;
 
   return (
@@ -51,7 +67,29 @@ export default async function ReviewPage({
           <p className="text-sm text-muted-foreground">{PAGES.review.subtitle}</p>
         </header>
 
-        <section className="mt-6 rounded-lg border border-border bg-card p-4">
+        <section className="mt-6 inline-flex rounded-lg border border-border bg-card p-1 text-xs">
+          <SourceTab href="/review" active={source === "demo"} label="Demo cases" count={demoCount} />
+          <SourceTab
+            href="/review?source=upload"
+            active={source === "upload"}
+            label="Your cases"
+            count={uploadCount}
+          />
+        </section>
+
+        {source === "upload" && pendingUploadCount > 0 && (
+          <section className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="text-amber-900/90 dark:text-amber-200">
+                {pendingUploadCount} of your uploaded action{pendingUploadCount === 1 ? "" : "s"}{" "}
+                {pendingUploadCount === 1 ? "is" : "are"} not classified yet.
+              </div>
+              <ClassifyPendingButton />
+            </div>
+          </section>
+        )}
+
+        <section className="mt-3 rounded-lg border border-border bg-card p-4">
           <div className="flex items-baseline justify-between gap-4">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-semibold tabular-nums">{reviewedCount}</span>
@@ -62,21 +100,22 @@ export default async function ReviewPage({
           </div>
           <Progress value={reviewedPct} className="mt-2" />
           <div className="mt-3 flex items-center justify-between gap-4 text-xs">
-            <PrevNext direction="prev" index={index} totalCount={totalCount} />
+            <PrevNext direction="prev" source={source} index={index} totalCount={totalCount} />
             <span className="font-mono text-muted-foreground">
-              action {index + 1} / {totalCount}
+              {totalCount === 0 ? "—" : `action ${index + 1} / ${totalCount}`}
             </span>
-            <PrevNext direction="next" index={index} totalCount={totalCount} />
+            <PrevNext direction="next" source={source} index={index} totalCount={totalCount} />
           </div>
         </section>
 
         {!action ? (
-          <EmptyState index={index} totalCount={totalCount} />
+          <EmptyState index={index} totalCount={totalCount} source={source} />
         ) : (
           <ActionView
             action={action}
             index={index}
             totalCount={totalCount}
+            source={source}
             classification={await getFinalClassification(action.id)}
             goldenLabel={await getGoldenLabel(action.id)}
           />
@@ -86,19 +125,50 @@ export default async function ReviewPage({
   );
 }
 
+function SourceTab({
+  href,
+  active,
+  label,
+  count,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count: number;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${
+        active
+          ? "bg-secondary text-foreground"
+          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+      }`}
+    >
+      <span>{label}</span>
+      <span className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+        {count}
+      </span>
+    </Link>
+  );
+}
+
 function PrevNext({
   direction,
   index,
   totalCount,
+  source,
 }: {
   direction: "prev" | "next";
   index: number;
   totalCount: number;
+  source: ActionSource;
 }) {
   const target = direction === "prev" ? index - 1 : index + 1;
   const enabled = direction === "prev" ? index > 0 : index + 1 < totalCount;
   const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
   const label = direction === "prev" ? "prev" : "next";
+  const sourceQuery = source === "upload" ? "&source=upload" : "";
   if (!enabled) {
     return (
       <span className="inline-flex items-center gap-1 text-muted-foreground/40">
@@ -109,7 +179,7 @@ function PrevNext({
   }
   return (
     <Link
-      href={`/review?index=${target}`}
+      href={`/review?index=${target}${sourceQuery}`}
       className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
     >
       {direction === "prev" && <Icon className="size-3.5" />}
@@ -119,14 +189,39 @@ function PrevNext({
   );
 }
 
-function EmptyState({ index, totalCount }: { index: number; totalCount: number }) {
+function EmptyState({
+  index,
+  totalCount,
+  source,
+}: {
+  index: number;
+  totalCount: number;
+  source: ActionSource;
+}) {
+  const isUpload = source === "upload";
   return (
     <Card className="mt-6">
       <CardContent className="px-6 py-8 text-sm text-muted-foreground">
-        No action at index {index}.{" "}
-        {totalCount === 0
-          ? <>Run <code className="font-mono">npm run seed:eighty</code>.</>
-          : <>The dataset has {totalCount} action(s); valid indices are 0&ndash;{totalCount - 1}.</>}
+        {totalCount === 0 ? (
+          isUpload ? (
+            <>
+              No uploaded actions yet.{" "}
+              <Link href="/upload" className="text-foreground underline underline-offset-2">
+                Upload a JSON sample
+              </Link>{" "}
+              to populate this view.
+            </>
+          ) : (
+            <>
+              No demo actions yet. Run <code className="font-mono">npm run seed:eighty</code>.
+            </>
+          )
+        ) : (
+          <>
+            No action at index {index}. The {isUpload ? "uploaded" : "demo"} set has{" "}
+            {totalCount} action(s); valid indices are 0&ndash;{totalCount - 1}.
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -136,15 +231,18 @@ function ActionView({
   action,
   index,
   totalCount,
+  source,
   classification,
   goldenLabel,
 }: {
   action: AgentAction;
   index: number;
   totalCount: number;
+  source: ActionSource;
   classification: ClassificationRow | null;
   goldenLabel: GoldenLabel | null;
 }) {
+  void source;
   return (
     <div className="mt-6 space-y-6">
       <ActionCard action={action} />

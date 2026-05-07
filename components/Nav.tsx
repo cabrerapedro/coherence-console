@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, ListChecks, LineChart, Gauge } from "lucide-react";
+import { Activity, ListChecks, LineChart, Gauge, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/review", label: "Review", icon: ListChecks },
   { href: "/evals", label: "Evals", icon: LineChart },
   { href: "/stats", label: "Stats", icon: Gauge },
+  { href: "/upload", label: "Upload", icon: Upload },
 ];
 
 export function Nav() {

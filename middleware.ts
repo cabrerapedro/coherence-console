@@ -3,21 +3,44 @@ import { COHERENCE_AUTH_COOKIE, constantTimeEqual, hashPassword } from "@/lib/au
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 
+export const UPLOAD_SESSION_COOKIE = "coherence_upload_session";
+const SESSION_BYTES = 4; // 8 hex chars
+
+function generateSessionId(): string {
+  const arr = new Uint8Array(SESSION_BYTES);
+  crypto.getRandomValues(arr);
+  return Array.from(arr)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function attachSessionIfMissing(req: NextRequest, res: NextResponse): NextResponse {
+  if (req.cookies.get(UPLOAD_SESSION_COOKIE)) return res;
+  res.cookies.set(UPLOAD_SESSION_COOKIE, generateSessionId(), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60,
+    path: "/",
+  });
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    return NextResponse.next();
+    return attachSessionIfMissing(req, NextResponse.next());
   }
 
   const password = process.env.ACCESS_PASSWORD;
   // No password configured → gate disabled (local dev convenience).
-  if (!password) return NextResponse.next();
+  if (!password) return attachSessionIfMissing(req, NextResponse.next());
 
   const cookie = req.cookies.get(COHERENCE_AUTH_COOKIE)?.value;
   const expected = await hashPassword(password);
   const authed = !!cookie && constantTimeEqual(cookie, expected);
 
-  if (authed) return NextResponse.next();
+  if (authed) return attachSessionIfMissing(req, NextResponse.next());
 
   // API routes get a 401; pages get a redirect to /login.
   if (pathname.startsWith("/api/")) {

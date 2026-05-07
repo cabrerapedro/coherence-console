@@ -54,6 +54,27 @@ export const NAV_CARDS = {
       "Total spend, escalation rate, per-model breakdown, and what we'd save vs always going to Sonnet.",
     cta: "Open stats",
   },
+  upload: {
+    title: "Upload your own",
+    description:
+      "Try the classifier with your own agent actions. Up to 20 cases per upload. Synthetic examples only — this is a shared demo.",
+    cta: "Open upload",
+  },
+};
+
+export const UPLOAD = {
+  pageTitle: "Upload",
+  pageSubtitle:
+    "Run the classifier against your own agent actions. Uploads are kept separate from the 80 hand-designed demo cases (`/stats` and `/evals` only count the demo). Your uploaded cases live under the 'Your cases' tab on /review.",
+  cap: 20,
+  warningTitle: "Don't upload real customer data",
+  warningBody:
+    "This is a shared, public demo. Anything you submit lands in a database other viewers can read. Use synthetic, scrubbed, or fabricated examples only — and never include real PII (emails, names, order IDs, payment details).",
+  formatHelp:
+    "Submit a JSON array of actions, or the full schema with metadata + actions. Each action needs: agent_id, timestamp, input, context (or null), output, tool_calls (array), autonomy_level (1–4).",
+  classifyHint:
+    "After upload, your cases are auto-classified with the same Haiku 4.5 + Sonnet 4.6 cascade used on the demo. Cost: ~$0.002 per action.",
+  successPrefix: "Uploaded",
 };
 
 export const TOOLTIPS = {

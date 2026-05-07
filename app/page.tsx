@@ -6,6 +6,7 @@ import {
   Gauge,
   LineChart,
   ListChecks,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { Nav } from "@/components/Nav";
@@ -66,7 +67,7 @@ export default async function HomePage() {
           <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Open a view
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <NavCard
               href="/review"
               icon={ListChecks}
@@ -87,6 +88,14 @@ export default async function HomePage() {
               title={NAV_CARDS.stats.title}
               description={NAV_CARDS.stats.description}
               cta={NAV_CARDS.stats.cta}
+            />
+            <NavCard
+              href="/upload"
+              icon={Upload}
+              title={NAV_CARDS.upload.title}
+              description={NAV_CARDS.upload.description}
+              cta={NAV_CARDS.upload.cta}
+              accent
             />
           </div>
         </section>
@@ -155,15 +164,19 @@ function NavCard({
   title,
   description,
   cta,
+  accent = false,
 }: {
   href: string;
   icon: LucideIcon;
   title: string;
   description: string;
   cta: string;
+  accent?: boolean;
 }) {
   return (
-    <Card className="group transition-colors hover:border-foreground/30">
+    <Card
+      className={`group transition-colors hover:border-foreground/30 ${accent ? "border-foreground/20 bg-secondary/30" : ""}`}
+    >
       <CardHeader>
         <div className="mb-2 flex size-9 items-center justify-center rounded-md bg-secondary text-muted-foreground transition-colors group-hover:bg-foreground group-hover:text-background">
           <Icon className="size-4" />
