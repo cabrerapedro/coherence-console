@@ -75,6 +75,47 @@ export async function getFirstAction(): Promise<AgentAction | null> {
   return rows[0] ?? null;
 }
 
+export async function getAllAgentActions(): Promise<AgentAction[]> {
+  return (await sql`
+    select id, agent_id, timestamp, input, context, output, tool_calls, autonomy_level, created_at
+    from agent_actions
+    order by created_at asc
+  `) as AgentAction[];
+}
+
+export async function getUnclassifiedActions(): Promise<AgentAction[]> {
+  return (await sql`
+    select a.id, a.agent_id, a.timestamp, a.input, a.context, a.output,
+           a.tool_calls, a.autonomy_level, a.created_at
+    from agent_actions a
+    where not exists (
+      select 1 from classifications c
+      where c.action_id = a.id and c.is_final = true
+    )
+    order by a.created_at asc
+  `) as AgentAction[];
+}
+
+export async function batchInsertAgentActions(
+  actions: AgentActionInput[],
+): Promise<{ insertedCount: number; skippedCount: number }> {
+  if (actions.length === 0) return { insertedCount: 0, skippedCount: 0 };
+  const queries = actions.map(
+    (a) => sql`
+      insert into agent_actions
+        (agent_id, timestamp, input, context, output, tool_calls, autonomy_level)
+      values
+        (${a.agent_id}, ${a.timestamp}, ${a.input}, ${a.context},
+         ${a.output}, ${JSON.stringify(a.tool_calls)}::jsonb, ${a.autonomy_level})
+      on conflict (agent_id, timestamp) do nothing
+      returning id
+    `,
+  );
+  const results = (await sql.transaction(queries)) as { id: string }[][];
+  const insertedCount = results.filter((rows) => rows.length > 0).length;
+  return { insertedCount, skippedCount: actions.length - insertedCount };
+}
+
 export type ClassificationRow = {
   id: string;
   action_id: string;
