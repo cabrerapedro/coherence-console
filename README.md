@@ -14,7 +14,7 @@ You upload a small sample of agent actions (up to 20 per upload) via the `/uploa
 
 The point is not the classifier. The point is installing the habit of asking the question — *did the agent do the right thing?* — at a cadence and rigor that telemetry tools (Langfuse, Sentry) cannot replicate. Telemetry sees what happened. This sees whether what happened was right.
 
-**Cost: ~$0.0019 per classification on average.** The full 80-action dataset cost **$0.15** to classify end-to-end with the cascade enabled.
+**Cost: ~$0.0019 per classification on average.** The full 80-action dataset cost **$0.15** to classify end-to-end with the cascade enabled (numbers from the v1 baseline run captured in `data/classifications_v1_block_full.json`; the live `/stats` page reads the same values from the DB if you re-run `npm run classify:all`).
 
 ---
 
@@ -37,12 +37,13 @@ Then [http://localhost:3000](http://localhost:3000). The deployed version is at 
 
 The `/upload` route is the primary entry point for new data; the `seed:*` scripts are for the included demo dataset only.
 
-The four routes:
+The user-facing routes:
 
-- `/` — landing view with the first action and a Classify button.
-- `/review` — one action at a time, classifier verdict, four-button human override (keyboard 1/2/3/4, ←/→ to navigate).
-- `/evals` — table of past eval runs with version, accuracy, precision, recall, cost, escalation rate, and delta vs the next-newer run.
-- `/stats` — total actions, total cost, escalation rate, cost saved vs Sonnet-only baseline, and per-model breakdown.
+- `/` — console landing: hero, dataset stats, links to the other views.
+- `/upload` — drag-drop or paste up to 20 agent actions per upload (synthetic only — the upload page itself warns about this). Auto-classified after insert.
+- `/review` — one action at a time, classifier verdict, four-button human override (keyboard 1/2/3/4, ←/→ to navigate). A tab switches between the demo cases and your uploaded ones.
+- `/evals` — table of past eval runs with version, accuracy, precision, recall, cost, escalation rate, and delta vs the next-newer run. Counts only the demo dataset.
+- `/stats` — total actions, total cost, escalation rate, cost saved vs Sonnet-only baseline, and per-model breakdown. Counts only the demo dataset.
 
 ---
 

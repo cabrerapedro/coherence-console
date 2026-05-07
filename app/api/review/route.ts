@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { getActionById, upsertGoldenLabel } from "@/lib/db";
+import { cookies } from "next/headers";
+import { getActionById, upsertGoldenLabel, uploadPrefixForSession } from "@/lib/db";
+import { UPLOAD_SESSION_COOKIE } from "@/middleware";
 
 const VALID_LABELS = new Set(["correct", "incorrect", "needs_review"] as const);
 
@@ -24,6 +26,26 @@ export async function POST(req: Request) {
   const action = await getActionById(action_id);
   if (!action) {
     return NextResponse.json({ error: "action not found" }, { status: 404 });
+  }
+
+  // Demo (aloha-*) actions: shared-label per the v1 design — any authenticated
+  // reviewer can label or re-label, and the latest write wins. This is the
+  // documented overwrite behavior in the README.
+  // Upload (upload-*) actions: private to the session that owns them.
+  // Cross-session label writes are rejected to protect each reviewer's
+  // private dataset from poisoning by other authenticated viewers.
+  if (action.agent_id.startsWith("upload-")) {
+    const cookieStore = await cookies();
+    const sessionId = cookieStore.get(UPLOAD_SESSION_COOKIE)?.value;
+    if (!sessionId) {
+      return NextResponse.json({ error: "no upload session" }, { status: 403 });
+    }
+    if (!action.agent_id.startsWith(uploadPrefixForSession(sessionId))) {
+      return NextResponse.json(
+        { error: "this upload belongs to another session" },
+        { status: 403 },
+      );
+    }
   }
 
   await upsertGoldenLabel(
