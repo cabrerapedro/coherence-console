@@ -9,7 +9,7 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": true, // required so scripts/ can use explicit .ts imports under Node 24 native TS strip; app/ and lib/ resolve via the Next bundler.
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
