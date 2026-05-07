@@ -183,6 +183,168 @@ export type CascadeRecord = {
   sonnet?: ClassificationRunInsert;
 };
 
+export type DatasetStats = {
+  totalActions: number;
+  totalCostUsd: number;
+  finalClassifications: number;
+  escalationCount: number;
+  byModel: { model: string; calls: number; totalCost: number; avgCost: number }[];
+};
+
+export async function getDatasetActionAtIndex(index: number): Promise<AgentAction | null> {
+  const rows = (await sql`
+    select id, agent_id, timestamp, input, context, output, tool_calls, autonomy_level, created_at
+    from agent_actions
+    where agent_id like 'aloha-%'
+    order by timestamp asc
+    offset ${index} limit 1
+  `) as unknown as AgentAction[];
+  return rows[0] ?? null;
+}
+
+export async function getDatasetActionCount(): Promise<number> {
+  const rows = (await sql`
+    select count(*)::int as n from agent_actions where agent_id like 'aloha-%'
+  `) as unknown as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+export async function getReviewedCount(): Promise<number> {
+  const rows = (await sql`
+    select count(*)::int as n
+    from golden_set g
+    join agent_actions a on a.id = g.action_id
+    where a.agent_id like 'aloha-%'
+  `) as unknown as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+export type GoldenLabel = {
+  human_label: "correct" | "incorrect" | "needs_review";
+  human_note: string | null;
+  labeled_at: string;
+};
+
+export async function getGoldenLabel(action_id: string): Promise<GoldenLabel | null> {
+  const rows = (await sql`
+    select human_label, human_note, labeled_at::text
+    from golden_set
+    where action_id = ${action_id}
+    limit 1
+  `) as unknown as GoldenLabel[];
+  return rows[0] ?? null;
+}
+
+// v1: re-labeling overwrites the prior label per the design call documented
+// in CLAUDE.md item 3 — versioned history is deferred to v2 for multi-reviewer
+// scenarios. ON CONFLICT DO UPDATE is the explicit overwrite contract.
+export async function upsertGoldenLabel(
+  action_id: string,
+  human_label: "correct" | "incorrect" | "needs_review",
+  human_note: string | null,
+): Promise<void> {
+  await sql`
+    insert into golden_set (action_id, human_label, human_note)
+    values (${action_id}, ${human_label}, ${human_note})
+    on conflict (action_id) do update
+      set human_label = excluded.human_label,
+          human_note = excluded.human_note,
+          labeled_at = now()
+  `;
+}
+
+export async function getDatasetStats(): Promise<DatasetStats> {
+  const [actionCountRows, finalRows, byModelRows] = await Promise.all([
+    sql`select count(*)::int as n from agent_actions where agent_id like 'aloha-%'`,
+    sql`
+      select count(*)::int as final_count,
+             coalesce(sum(c.cost_usd), 0)::text as total_cost,
+             count(*) filter (where c.model_used = 'anthropic/claude-sonnet-4-6')::int as escalations
+      from classifications c
+      join agent_actions a on a.id = c.action_id
+      where c.is_final = true and a.agent_id like 'aloha-%'
+    `,
+    sql`
+      select c.model_used as model,
+             count(*)::int as calls,
+             coalesce(sum(c.cost_usd), 0)::text as total_cost
+      from classifications c
+      join agent_actions a on a.id = c.action_id
+      where c.is_final = true and a.agent_id like 'aloha-%'
+      group by c.model_used
+      order by c.model_used
+    `,
+  ]);
+  const action = (actionCountRows as unknown as { n: number }[])[0];
+  const fin = (finalRows as unknown as { final_count: number; total_cost: string; escalations: number }[])[0];
+  const models = byModelRows as unknown as { model: string; calls: number; total_cost: string }[];
+  return {
+    totalActions: action?.n ?? 0,
+    totalCostUsd: Number(fin?.total_cost ?? 0),
+    finalClassifications: fin?.final_count ?? 0,
+    escalationCount: fin?.escalations ?? 0,
+    byModel: models.map((r) => ({
+      model: r.model,
+      calls: r.calls,
+      totalCost: Number(r.total_cost),
+      avgCost: r.calls > 0 ? Number(r.total_cost) / r.calls : 0,
+    })),
+  };
+}
+
+export type EvalRun = {
+  id: string;
+  classifier_version: string;
+  model_primary: string;
+  model_escalation: string | null;
+  total_actions: number;
+  accuracy: string;
+  precision_score: string;
+  recall_score: string;
+  total_cost_usd: string;
+  escalation_rate: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export async function getEvalRuns(): Promise<EvalRun[]> {
+  return (await sql`
+    select id, classifier_version, model_primary, model_escalation, total_actions,
+           accuracy::text, precision_score::text, recall_score::text,
+           total_cost_usd::text, escalation_rate::text, notes, created_at
+    from eval_runs
+    order by created_at desc
+  `) as unknown as EvalRun[];
+}
+
+export type EvalRunInsert = {
+  classifier_version: string;
+  model_primary: string;
+  model_escalation: string | null;
+  total_actions: number;
+  accuracy: number;
+  precision_score: number;
+  recall_score: number;
+  total_cost_usd: number;
+  escalation_rate: number;
+  notes: string | null;
+};
+
+export async function insertEvalRun(r: EvalRunInsert): Promise<{ id: string }> {
+  const rows = (await sql`
+    insert into eval_runs
+      (classifier_version, model_primary, model_escalation, total_actions,
+       accuracy, precision_score, recall_score, total_cost_usd,
+       escalation_rate, notes)
+    values
+      (${r.classifier_version}, ${r.model_primary}, ${r.model_escalation},
+       ${r.total_actions}, ${r.accuracy}, ${r.precision_score}, ${r.recall_score},
+       ${r.total_cost_usd}, ${r.escalation_rate}, ${r.notes})
+    returning id
+  `) as unknown as { id: string }[];
+  return rows[0];
+}
+
 export async function recordClassificationCascade(r: CascadeRecord): Promise<void> {
   await sql`update classifications set is_final = false where action_id = ${r.action_id} and is_final = true`;
   if (r.haiku) {

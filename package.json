@@ -15,6 +15,7 @@
     "classify:all": "node --env-file=.env.local scripts/classify_all.ts",
     "inspect": "node --env-file=.env.local scripts/inspect_classifications.ts",
     "dump:classifications": "node --env-file=.env.local scripts/dump_classifications.ts",
+    "eval": "node --env-file=.env.local scripts/eval.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

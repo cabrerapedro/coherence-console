@@ -42,7 +42,14 @@ export default async function Page() {
   const action = await getFirstAction();
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">Coherence Console</h1>
+      <header className="flex items-baseline justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight">Coherence Console</h1>
+        <nav className="flex gap-4 text-xs">
+          <a href="/review" className="opacity-60 hover:opacity-100">review</a>
+          <a href="/evals" className="opacity-60 hover:opacity-100">evals</a>
+          <a href="/stats" className="opacity-60 hover:opacity-100">stats</a>
+        </nav>
+      </header>
       <p className="mt-1 text-sm opacity-70">
         Review AI agent actions, classify them, and detect regressions over time.
       </p>
