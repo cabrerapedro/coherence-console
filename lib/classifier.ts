@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { HAIKU_4_5, SONNET_4_6, priceFor } from "./pricing";
-import type { AgentAction } from "./db";
+import { HAIKU_4_5, SONNET_4_6, priceFor } from "./pricing.ts";
+import type { AgentAction } from "./db.ts";
 
 export const CLASSIFIER_VERSION = "v1";
 const ESCALATION_THRESHOLD = 0.7;

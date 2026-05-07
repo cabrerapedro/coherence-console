@@ -10,6 +10,7 @@
     "lint": "eslint",
     "migrate": "node --env-file=.env.local scripts/migrate.ts",
     "seed:one": "node --env-file=.env.local scripts/seed_one.ts",
+    "classify:one": "node --env-file=.env.local scripts/classify_one.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

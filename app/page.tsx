@@ -1,103 +1,155 @@
-import Image from "next/image";
+import { revalidatePath } from "next/cache";
+import {
+  getFirstAction,
+  getFinalClassification,
+  recordClassificationCascade,
+  type AgentAction,
+  type ClassificationRow,
+} from "@/lib/db";
+import { classify, CLASSIFIER_VERSION } from "@/lib/classifier";
 
-export default function Home() {
+async function classifyAction(formData: FormData) {
+  "use server";
+  const action_id = String(formData.get("action_id") ?? "");
+  if (!action_id) throw new Error("missing action_id");
+
+  const action = await getFirstAction();
+  if (!action || action.id !== action_id) throw new Error("action not found");
+
+  const result = await classify(action);
+  await recordClassificationCascade({
+    action_id,
+    classifier_version: CLASSIFIER_VERSION,
+    haiku: {
+      ...result.haiku.classification,
+      model_used: result.haiku.model,
+      cost_usd: result.haiku.cost_usd,
+    },
+    sonnet: result.sonnet
+      ? {
+          ...result.sonnet.classification,
+          model_used: result.sonnet.model,
+          cost_usd: result.sonnet.cost_usd,
+        }
+      : undefined,
+  });
+  revalidatePath("/");
+}
+
+export default async function Page() {
+  const action = await getFirstAction();
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <h1 className="text-2xl font-semibold tracking-tight">Coherence Console</h1>
+      <p className="mt-1 text-sm opacity-70">
+        Review AI agent actions, classify them, and detect regressions over time.
+      </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      {!action ? (
+        <EmptyState />
+      ) : (
+        <ActionView action={action} classification={await getFinalClassification(action.id)} />
+      )}
+    </main>
+  );
+}
+
+function EmptyState() {
+  return (
+    <section className="mt-10 rounded border border-dashed border-current/20 p-6 text-sm opacity-80">
+      No actions in the database yet. Run <code className="font-mono">npm run seed:one</code>.
+    </section>
+  );
+}
+
+function ActionView({
+  action,
+  classification,
+}: {
+  action: AgentAction;
+  classification: ClassificationRow | null;
+}) {
+  return (
+    <section className="mt-8 space-y-6">
+      <ActionCard action={action} />
+      {classification ? (
+        <ClassificationCard c={classification} />
+      ) : (
+        <p className="text-sm opacity-70">Not classified yet.</p>
+      )}
+      <form action={classifyAction}>
+        <input type="hidden" name="action_id" value={action.id} />
+        <button
+          type="submit"
+          className="rounded bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {classification ? "Re-classify" : "Classify with current model"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function ActionCard({ action }: { action: AgentAction }) {
+  return (
+    <article className="rounded border border-current/15 p-5 text-sm">
+      <header className="mb-3 flex items-center justify-between text-xs opacity-70">
+        <span className="font-mono">{action.agent_id}</span>
+        <span className="font-mono">autonomy L{action.autonomy_level}</span>
+      </header>
+      <Field label="Input" value={action.input} />
+      <Field label="Context" value={action.context ?? "—"} />
+      <Field label="Output" value={action.output} />
+      <Field
+        label="Tool calls"
+        value={action.tool_calls.length > 0 ? action.tool_calls.join(", ") : "none"}
+      />
+    </article>
+  );
+}
+
+function ClassificationCard({ c }: { c: ClassificationRow }) {
+  return (
+    <article className="rounded border border-current/15 p-5 text-sm">
+      <header className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+        <Badge>{c.classification}</Badge>
+        <span className="opacity-70">confidence {Number(c.confidence).toFixed(2)}</span>
+        <span className="opacity-70 font-mono">{c.model_used}</span>
+        <span className="opacity-70">${Number(c.cost_usd).toFixed(6)}</span>
+      </header>
+      <Field
+        label="Reasoning"
+        value={
+          <ol className="list-decimal pl-5 space-y-1">
+            {c.reasoning_steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        }
+      />
+      <Field
+        label="Policy violations"
+        value={c.policy_violations.length > 0 ? c.policy_violations.join(", ") : "none"}
+      />
+      <Field label="Autonomy appropriate" value={c.autonomy_appropriate ? "yes" : "no"} />
+      <Field label="Escalation recommended" value={c.escalation_recommended ? "yes" : "no"} />
+    </article>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="mt-3 first:mt-0">
+      <div className="text-xs uppercase tracking-wide opacity-50">{label}</div>
+      <div className="mt-0.5">{value}</div>
     </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded border border-current/30 px-2 py-0.5 font-mono text-xs">
+      {children}
+    </span>
   );
 }
