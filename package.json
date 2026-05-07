@@ -11,6 +11,7 @@
     "migrate": "node --env-file=.env.local scripts/migrate.ts",
     "seed:one": "node --env-file=.env.local scripts/seed_one.ts",
     "classify:one": "node --env-file=.env.local scripts/classify_one.ts",
+    "inspect": "node --env-file=.env.local scripts/inspect_classifications.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
